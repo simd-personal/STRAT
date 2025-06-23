@@ -32,14 +32,20 @@ async def summarize_pdf(file: UploadFile = File(...)):
             return {"summary": "No extractable text found in PDF."}
         # Truncate to 3000 tokens (about 12,000 chars) for GPT-4 Turbo
         text = text[:12000]
-        # Call OpenAI GPT-4 Turbo
+        # Improved system prompt for better summary
+        system_prompt = (
+            """
+            You are a senior military operations analyst. Summarize the following mission document for a command staff in exactly 5 bullet points. Each bullet must start with a bolded category label (e.g., **OBJECTIVE**, **ASSETS**, **PHASES**, **INTEL**, **CONTINGENCIES**), followed by a concise, actionable statement. Use clear, high-level military language. Prioritize operational details, risks, and critical information.
+            """
+        )
         response = openai.chat.completions.create(
             model="gpt-4-turbo",
             messages=[
-                {"role": "system", "content": "You are a military operations analyst. Summarize this mission document for a command staff in 5 bullet points."},
+                {"role": "system", "content": system_prompt},
                 {"role": "user", "content": text}
             ],
-            max_tokens=400
+            max_tokens=500,
+            temperature=0.3
         )
         summary = response.choices[0].message.content.strip()
         return {"summary": summary}
