@@ -752,10 +752,10 @@ export default function Home() {
         </section>
       </main>
 
-      {/* Offline Toggle */}
-      <div className="fixed bottom-6 right-6 z-[100] sm:bottom-4 sm:right-4">
+      {/* Offline Toggle - Always visible */}
+      <div className="fixed bottom-6 right-6 z-[9999] sm:bottom-4 sm:right-4">
         <button
-          className={`flex items-center gap-2 px-4 py-2 rounded-full shadow-lg border-2 ${isOffline ? 'bg-red-900 border-red-700 text-red-200' : 'bg-green-900 border-green-700 text-green-200'} transition-colors`}
+          className={`flex items-center gap-2 px-4 py-2 rounded-full shadow-xl border-2 ${isOffline ? 'bg-red-900 border-red-700 text-red-200' : 'bg-green-900 border-green-700 text-green-200'} transition-colors hover:scale-105`}
           onClick={() => setIsOffline(!isOffline)}
           title={isOffline ? 'Switch to Online Mode' : 'Switch to Offline Mode'}
           style={{ pointerEvents: 'auto' }}
