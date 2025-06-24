@@ -753,7 +753,7 @@ export default function Home() {
       </main>
 
       {/* Offline Toggle - Fixed and always visible */}
-      <div className="fixed bottom-6 right-6 z-[9999] sm:bottom-4 sm:right-4" style={{ position: 'fixed', bottom: '24px', right: '24px', zIndex: 9999 }}>
+      <div className="fixed top-6 right-6 z-[9999] sm:top-4 sm:right-4" style={{ position: 'fixed', top: '24px', right: '24px', zIndex: 9999 }}>
         <button
           className={`flex items-center gap-2 px-4 py-2 rounded-full shadow-xl border-2 ${isOffline ? 'bg-red-900 border-red-700 text-red-200' : 'bg-green-900 border-green-700 text-green-200'} transition-colors hover:scale-105`}
           onClick={() => setIsOffline(!isOffline)}
