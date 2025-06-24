@@ -21,6 +21,7 @@ app = FastAPI()
 
 # Set OpenAI API key from environment variable
 openai_api_key = os.getenv("OPENAI_API_KEY", "your-api-key-here")
+print(f"[DEBUG] OpenAI API Key loaded: {openai_api_key[:8]}... (length: {len(openai_api_key)})")
 client = openai.OpenAI(api_key=openai_api_key)
 
 # Allow CORS for local frontend
@@ -626,7 +627,7 @@ def initialize_threats(mission_plan: str) -> Dict[str, Any]:
     return threats
 
 async def run_simulation_step():
-    """Execute one step of the simulation"""
+    """Execute one step of the simulation (TEST MODE: always generate events)"""
     if simulation_state["status"] != SimulationStatus.RUNNING:
         return
     
@@ -635,31 +636,30 @@ async def run_simulation_step():
     simulation_state["current_time"] = format_time(current_minutes)
     simulation_state["mission_duration"] += 5
     
-    # Generate random events based on current state
+    # Generate events based on current state (always generate for testing)
     events = []
     
-    # Asset movement events
+    # Asset movement events (always move)
     for asset_id, asset in simulation_state["assets"].items():
-        if random.random() < 0.3:  # 30% chance of movement
-            # Simple movement logic
-            new_lat = asset["position"]["lat"] + random.uniform(-0.001, 0.001)
-            new_lng = asset["position"]["lng"] + random.uniform(-0.001, 0.001)
-            asset["position"] = {"lat": new_lat, "lng": new_lng}
-            
-            event = create_simulation_event(
-                EventType.ASSET_MOVEMENT,
-                simulation_state["current_time"],
-                {
-                    "asset_id": asset_id,
-                    "new_position": asset["position"],
-                    "status": asset["status"]
-                }
-            )
-            events.append(event)
+        # Simple movement logic
+        new_lat = asset["position"]["lat"] + random.uniform(-0.001, 0.001)
+        new_lng = asset["position"]["lng"] + random.uniform(-0.001, 0.001)
+        asset["position"] = {"lat": new_lat, "lng": new_lng}
+        
+        event = create_simulation_event(
+            EventType.ASSET_MOVEMENT,
+            simulation_state["current_time"],
+            {
+                "asset_id": asset_id,
+                "new_position": asset["position"],
+                "status": asset["status"]
+            }
+        )
+        events.append(event)
     
-    # Threat detection events
+    # Threat detection events (always detect if not already detected)
     for threat_id, threat in simulation_state["threats"].items():
-        if not threat["detected"] and random.random() < 0.2:  # 20% chance of detection
+        if not threat["detected"]:
             threat["detected"] = True
             threat["status"] = "detected"
             
@@ -674,20 +674,18 @@ async def run_simulation_step():
             )
             events.append(event)
     
-    # Weather changes
-    if random.random() < 0.1:  # 10% chance of weather change
-        weather_conditions = ["clear", "cloudy", "rain", "fog"]
-        simulation_state["weather"]["condition"] = random.choice(weather_conditions)
-        
-        event = create_simulation_event(
-            EventType.WEATHER_CHANGE,
-            simulation_state["current_time"],
-            {
-                "condition": simulation_state["weather"]["condition"],
-                "visibility": simulation_state["weather"]["visibility"]
-            }
-        )
-        events.append(event)
+    # Weather changes (always change)
+    weather_conditions = ["clear", "cloudy", "rain", "fog"]
+    simulation_state["weather"]["condition"] = random.choice(weather_conditions)
+    event = create_simulation_event(
+        EventType.WEATHER_CHANGE,
+        simulation_state["current_time"],
+        {
+            "condition": simulation_state["weather"]["condition"],
+            "visibility": simulation_state["weather"]["visibility"]
+        }
+    )
+    events.append(event)
     
     # Add events to timeline
     simulation_state["timeline"].extend(events)
