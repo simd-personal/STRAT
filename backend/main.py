@@ -1,7 +1,7 @@
 from fastapi import FastAPI, File, UploadFile, Form, Request, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from typing import List
+from typing import List, Dict, Any, Optional
 import openai
 import os
 from dotenv import load_dotenv
@@ -9,6 +9,10 @@ import PyPDF2
 import io
 import re
 import datetime
+import asyncio
+import json
+import random
+from enum import Enum
 
 # Load environment variables from .env file
 load_dotenv()
@@ -22,11 +26,50 @@ client = openai.OpenAI(api_key=openai_api_key)
 # Allow CORS for local frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=["http://localhost:3000", "http://localhost:3001"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# --- Simulation Engine State ---
+class SimulationStatus(Enum):
+    IDLE = "idle"
+    RUNNING = "running"
+    PAUSED = "paused"
+    COMPLETED = "completed"
+    ERROR = "error"
+
+class EventType(Enum):
+    MISSION_START = "mission_start"
+    ASSET_MOVEMENT = "asset_movement"
+    THREAT_DETECTED = "threat_detected"
+    ENGAGEMENT = "engagement"
+    WEATHER_CHANGE = "weather_change"
+    COMMS_UPDATE = "comms_update"
+    EXTRACTION = "extraction"
+    CASUALTY = "casualty"
+    OBJECTIVE_COMPLETE = "objective_complete"
+    USER_INJECTED = "user_injected"
+
+# Simulation state
+simulation_state = {
+    "status": SimulationStatus.IDLE,
+    "current_time": "0600",
+    "mission_duration": 0,  # minutes
+    "assets": {},  # {asset_id: {type, position, status, fuel, ammo}}
+    "threats": {},  # {threat_id: {type, position, status, detected}}
+    "weather": {
+        "condition": "clear",
+        "visibility": "good",
+        "wind_speed": 5,
+        "temperature": 72
+    },
+    "comms_status": "operational",
+    "objectives": [],
+    "timeline": [],  # List of simulation events
+    "user_injections": []  # User-requested events
+}
 
 # In-memory log store (replace with DB for production)
 mission_logs = []
@@ -396,3 +439,479 @@ async def approve_conops():
 async def share_conops():
     log_event("CONOPS", "CONOPS shared with team", {"content": conops_state["content"], "version": conops_state["version"]-1})
     return {"status": "ok", "message": "CONOPS shared (placeholder)"}
+
+# --- Simulation Engine Functions ---
+
+def parse_time(time_str: str) -> int:
+    """Convert time string (HHMM) to minutes since midnight"""
+    hours = int(time_str[:2])
+    minutes = int(time_str[2:])
+    return hours * 60 + minutes
+
+def format_time(minutes: int) -> str:
+    """Convert minutes since midnight to time string (HHMM)"""
+    hours = minutes // 60
+    mins = minutes % 60
+    return f"{hours:02d}{mins:02d}"
+
+def calculate_distance(pos1: Dict[str, float], pos2: Dict[str, float]) -> float:
+    """Calculate distance between two positions (simplified)"""
+    lat_diff = pos1["lat"] - pos2["lat"]
+    lng_diff = pos1["lng"] - pos2["lng"]
+    return (lat_diff**2 + lng_diff**2)**0.5
+
+def generate_ai_narrative(event_type: EventType, context: Dict[str, Any]) -> str:
+    """Generate AI-powered narrative for simulation events"""
+    
+    system_prompt = """You are a military operations narrator for a real-time mission simulation. 
+    Generate concise, realistic military-style narrative for the given event. 
+    Use military time format (HHMM), technical terminology, and maintain operational realism.
+    Keep responses under 100 words and focus on actionable information."""
+    
+    event_prompts = {
+        EventType.MISSION_START: "Mission insertion team has lifted off from base. Generate a brief status update.",
+        EventType.ASSET_MOVEMENT: f"Asset {context.get('asset_id', 'UNKNOWN')} is moving to new position. Generate movement update.",
+        EventType.THREAT_DETECTED: f"Threat detected at position. Type: {context.get('threat_type', 'UNKNOWN')}. Generate threat assessment.",
+        EventType.ENGAGEMENT: f"Engagement initiated. Generate combat status update.",
+        EventType.WEATHER_CHANGE: f"Weather conditions changing. Generate weather update.",
+        EventType.COMMS_UPDATE: f"Communications status update. Generate comms report.",
+        EventType.EXTRACTION: "Extraction team deployed. Generate extraction status.",
+        EventType.CASUALTY: "Casualty reported. Generate casualty report.",
+        EventType.OBJECTIVE_COMPLETE: "Objective completed. Generate objective status.",
+        EventType.USER_INJECTED: f"User-injected event: {context.get('description', 'UNKNOWN')}. Generate narrative."
+    }
+    
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4-turbo-preview",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": event_prompts.get(event_type, "Generate mission update.")}
+            ],
+            max_tokens=150,
+            temperature=0.7
+        )
+        return response.choices[0].message.content.strip()
+    except Exception as e:
+        return f"Simulation event: {event_type.value} at {context.get('time', 'UNKNOWN')}"
+
+def create_simulation_event(event_type: EventType, time: str, details: Dict[str, Any]) -> Dict[str, Any]:
+    """Create a simulation event with AI-generated narrative"""
+    narrative = generate_ai_narrative(event_type, {**details, "time": time})
+    
+    return {
+        "id": f"event_{len(simulation_state['timeline'])}",
+        "type": event_type.value,
+        "time": time,
+        "narrative": narrative,
+        "details": details,
+        "timestamp": datetime.datetime.utcnow().isoformat() + 'Z'
+    }
+
+def initialize_mission_assets(mission_plan: str) -> Dict[str, Any]:
+    """Initialize assets based on mission plan content"""
+    assets = {}
+    
+    # Extract asset information from mission plan using AI
+    system_prompt = """Extract military assets from the mission plan. 
+    Return a JSON object with assets in format:
+    {
+        "asset_id": {
+            "type": "helicopter|vehicle|team",
+            "position": {"lat": float, "lng": float},
+            "status": "ready|deployed|engaged",
+            "fuel": 100,
+            "ammo": 100
+        }
+    }"""
+    
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4-turbo-preview",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": mission_plan}
+            ],
+            max_tokens=500,
+            temperature=0.3
+        )
+        
+        assets_text = response.choices[0].message.content.strip()
+        # Try to parse JSON, fallback to default assets if parsing fails
+        try:
+            assets = json.loads(assets_text)
+        except:
+            # Default assets if AI parsing fails
+            assets = {
+                "insertion_team": {
+                    "type": "team",
+                    "position": {"lat": 39.8283, "lng": -98.5795},
+                    "status": "ready",
+                    "fuel": 100,
+                    "ammo": 100
+                },
+                "extraction_team": {
+                    "type": "team", 
+                    "position": {"lat": 39.8283, "lng": -98.5795},
+                    "status": "ready",
+                    "fuel": 100,
+                    "ammo": 100
+                }
+            }
+    except Exception as e:
+        # Fallback to default assets
+        assets = {
+            "insertion_team": {
+                "type": "team",
+                "position": {"lat": 39.8283, "lng": -98.5795},
+                "status": "ready",
+                "fuel": 100,
+                "ammo": 100
+            }
+        }
+    
+    return assets
+
+def initialize_threats(mission_plan: str) -> Dict[str, Any]:
+    """Initialize threats based on mission plan content"""
+    threats = {}
+    
+    # Extract threat information from mission plan using AI
+    system_prompt = """Extract potential threats from the mission plan.
+    Return a JSON object with threats in format:
+    {
+        "threat_id": {
+            "type": "ied|sniper|ambush|vehicle",
+            "position": {"lat": float, "lng": float},
+            "status": "active|neutralized|detected",
+            "detected": false
+        }
+    }"""
+    
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4-turbo-preview",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": mission_plan}
+            ],
+            max_tokens=500,
+            temperature=0.3
+        )
+        
+        threats_text = response.choices[0].message.content.strip()
+        try:
+            threats = json.loads(threats_text)
+        except:
+            # Default threats if AI parsing fails
+            threats = {
+                "threat_1": {
+                    "type": "ied",
+                    "position": {"lat": 39.8300, "lng": -98.5800},
+                    "status": "active",
+                    "detected": False
+                }
+            }
+    except Exception as e:
+        # Fallback to default threats
+        threats = {
+            "threat_1": {
+                "type": "ied",
+                "position": {"lat": 39.8300, "lng": -98.5800},
+                "status": "active",
+                "detected": False
+            }
+        }
+    
+    return threats
+
+async def run_simulation_step():
+    """Execute one step of the simulation"""
+    if simulation_state["status"] != SimulationStatus.RUNNING:
+        return
+    
+    current_minutes = parse_time(simulation_state["current_time"])
+    current_minutes += 5  # Advance 5 minutes
+    simulation_state["current_time"] = format_time(current_minutes)
+    simulation_state["mission_duration"] += 5
+    
+    # Generate random events based on current state
+    events = []
+    
+    # Asset movement events
+    for asset_id, asset in simulation_state["assets"].items():
+        if random.random() < 0.3:  # 30% chance of movement
+            # Simple movement logic
+            new_lat = asset["position"]["lat"] + random.uniform(-0.001, 0.001)
+            new_lng = asset["position"]["lng"] + random.uniform(-0.001, 0.001)
+            asset["position"] = {"lat": new_lat, "lng": new_lng}
+            
+            event = create_simulation_event(
+                EventType.ASSET_MOVEMENT,
+                simulation_state["current_time"],
+                {
+                    "asset_id": asset_id,
+                    "new_position": asset["position"],
+                    "status": asset["status"]
+                }
+            )
+            events.append(event)
+    
+    # Threat detection events
+    for threat_id, threat in simulation_state["threats"].items():
+        if not threat["detected"] and random.random() < 0.2:  # 20% chance of detection
+            threat["detected"] = True
+            threat["status"] = "detected"
+            
+            event = create_simulation_event(
+                EventType.THREAT_DETECTED,
+                simulation_state["current_time"],
+                {
+                    "threat_id": threat_id,
+                    "threat_type": threat["type"],
+                    "position": threat["position"]
+                }
+            )
+            events.append(event)
+    
+    # Weather changes
+    if random.random() < 0.1:  # 10% chance of weather change
+        weather_conditions = ["clear", "cloudy", "rain", "fog"]
+        simulation_state["weather"]["condition"] = random.choice(weather_conditions)
+        
+        event = create_simulation_event(
+            EventType.WEATHER_CHANGE,
+            simulation_state["current_time"],
+            {
+                "condition": simulation_state["weather"]["condition"],
+                "visibility": simulation_state["weather"]["visibility"]
+            }
+        )
+        events.append(event)
+    
+    # Add events to timeline
+    simulation_state["timeline"].extend(events)
+    
+    # Log events
+    for event in events:
+        log_event("Simulation", event["narrative"], event["details"])
+    
+    # Check for mission completion (example: 2 hours = 120 minutes)
+    if simulation_state["mission_duration"] >= 120:
+        simulation_state["status"] = SimulationStatus.COMPLETED
+        completion_event = create_simulation_event(
+            EventType.OBJECTIVE_COMPLETE,
+            simulation_state["current_time"],
+            {"status": "mission_completed", "duration": simulation_state["mission_duration"]}
+        )
+        simulation_state["timeline"].append(completion_event)
+        log_event("Simulation", "Mission completed", {"duration": simulation_state["mission_duration"]})
+
+# --- Simulation API Endpoints ---
+
+@app.post("/api/simulation/start")
+async def start_simulation():
+    """Start the mission simulation"""
+    try:
+        # Reset simulation state
+        simulation_state["status"] = SimulationStatus.RUNNING
+        simulation_state["current_time"] = "0600"
+        simulation_state["mission_duration"] = 0
+        simulation_state["timeline"] = []
+        simulation_state["user_injections"] = []
+        
+        # Initialize assets and threats from current mission plan
+        if current_plan["content"]:
+            simulation_state["assets"] = initialize_mission_assets(current_plan["content"])
+            simulation_state["threats"] = initialize_threats(current_plan["content"])
+        else:
+            # Default assets and threats
+            simulation_state["assets"] = {
+                "insertion_team": {
+                    "type": "team",
+                    "position": {"lat": 39.8283, "lng": -98.5795},
+                    "status": "ready",
+                    "fuel": 100,
+                    "ammo": 100
+                }
+            }
+            simulation_state["threats"] = {
+                "threat_1": {
+                    "type": "ied",
+                    "position": {"lat": 39.8300, "lng": -98.5800},
+                    "status": "active",
+                    "detected": False
+                }
+            }
+        
+        # Create mission start event
+        start_event = create_simulation_event(
+            EventType.MISSION_START,
+            simulation_state["current_time"],
+            {"assets": list(simulation_state["assets"].keys())}
+        )
+        simulation_state["timeline"].append(start_event)
+        
+        log_event("Simulation", "Mission simulation started", {
+            "assets": simulation_state["assets"],
+            "threats": simulation_state["threats"]
+        })
+        
+        return {
+            "status": "success",
+            "message": "Simulation started",
+            "simulation_state": simulation_state
+        }
+        
+    except Exception as e:
+        simulation_state["status"] = SimulationStatus.ERROR
+        log_event("System", f"Simulation start error: {str(e)}")
+        return {"status": "error", "message": str(e)}
+
+@app.post("/api/simulation/pause")
+async def pause_simulation():
+    """Pause the mission simulation"""
+    simulation_state["status"] = SimulationStatus.PAUSED
+    log_event("Simulation", "Simulation paused", {"time": simulation_state["current_time"]})
+    return {"status": "success", "message": "Simulation paused"}
+
+@app.post("/api/simulation/resume")
+async def resume_simulation():
+    """Resume the mission simulation"""
+    simulation_state["status"] = SimulationStatus.RUNNING
+    log_event("Simulation", "Simulation resumed", {"time": simulation_state["current_time"]})
+    return {"status": "success", "message": "Simulation resumed"}
+
+@app.post("/api/simulation/stop")
+async def stop_simulation():
+    """Stop the mission simulation"""
+    simulation_state["status"] = SimulationStatus.IDLE
+    log_event("Simulation", "Simulation stopped", {"time": simulation_state["current_time"]})
+    return {"status": "success", "message": "Simulation stopped"}
+
+@app.post("/api/simulation/step")
+async def step_simulation():
+    """Execute one simulation step"""
+    await run_simulation_step()
+    return {
+        "status": "success",
+        "simulation_state": simulation_state
+    }
+
+@app.post("/api/simulation/inject")
+async def inject_event(body: dict = Body(...)):
+    """Inject a user-defined event into the simulation"""
+    try:
+        event_description = body.get("description", "")
+        event_type = body.get("type", "user_injected")
+        
+        # Create user-injected event
+        event = create_simulation_event(
+            EventType.USER_INJECTED,
+            simulation_state["current_time"],
+            {"description": event_description, "type": event_type}
+        )
+        
+        simulation_state["timeline"].append(event)
+        simulation_state["user_injections"].append(event)
+        
+        log_event("Simulation", f"User injected event: {event_description}", event["details"])
+        
+        return {
+            "status": "success",
+            "message": "Event injected",
+            "event": event
+        }
+        
+    except Exception as e:
+        log_event("System", f"Event injection error: {str(e)}")
+        return {"status": "error", "message": str(e)}
+
+@app.get("/api/simulation/status")
+async def get_simulation_status():
+    """Get current simulation status"""
+    return {
+        "status": simulation_state["status"].value,
+        "current_time": simulation_state["current_time"],
+        "mission_duration": simulation_state["mission_duration"],
+        "assets": simulation_state["assets"],
+        "threats": simulation_state["threats"],
+        "weather": simulation_state["weather"],
+        "comms_status": simulation_state["comms_status"],
+        "timeline": simulation_state["timeline"][-10:],  # Last 10 events
+        "user_injections": simulation_state["user_injections"]
+    }
+
+@app.get("/api/simulation/timeline")
+async def get_simulation_timeline():
+    """Get full simulation timeline"""
+    return {
+        "timeline": simulation_state["timeline"],
+        "total_events": len(simulation_state["timeline"])
+    }
+
+# --- Real-time Simulation Runner ---
+
+simulation_task = None
+simulation_speed = 5  # seconds between steps
+
+async def run_real_time_simulation():
+    """Run simulation in real-time with configurable speed"""
+    global simulation_task
+    
+    while simulation_state["status"] == SimulationStatus.RUNNING:
+        await run_simulation_step()
+        await asyncio.sleep(simulation_speed)  # Wait between steps
+        
+        # Check if simulation should continue
+        if simulation_state["status"] != SimulationStatus.RUNNING:
+            break
+
+@app.post("/api/simulation/start-realtime")
+async def start_real_time_simulation():
+    """Start real-time simulation"""
+    global simulation_task
+    
+    try:
+        # Start the simulation
+        await start_simulation()
+        
+        # Start the real-time runner
+        simulation_task = asyncio.create_task(run_real_time_simulation())
+        
+        return {
+            "status": "success",
+            "message": "Real-time simulation started",
+            "speed": simulation_speed
+        }
+        
+    except Exception as e:
+        log_event("System", f"Real-time simulation start error: {str(e)}")
+        return {"status": "error", "message": str(e)}
+
+@app.post("/api/simulation/set-speed")
+async def set_simulation_speed(body: dict = Body(...)):
+    """Set simulation speed (seconds between steps)"""
+    global simulation_speed
+    
+    speed = body.get("speed", 5)
+    if speed < 1:
+        speed = 1
+    elif speed > 60:
+        speed = 60
+    
+    simulation_speed = speed
+    
+    return {
+        "status": "success",
+        "message": f"Simulation speed set to {speed} seconds",
+        "speed": simulation_speed
+    }
+
+@app.get("/api/simulation/speed")
+async def get_simulation_speed():
+    """Get current simulation speed"""
+    return {
+        "speed": simulation_speed,
+        "status": simulation_state["status"].value
+    }
