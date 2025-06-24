@@ -9,6 +9,23 @@ const Marker = dynamic(() => import("react-map-gl/mapbox").then(mod => mod.Marke
 
 const MAPBOX_TOKEN = "pk.eyJ1Ijoic3NkMzYwIiwiYSI6ImNtYzlzNGh6NTF3bXMyanEwdWttajNrZjUifQ.9sOzbXQl4ORfE8Ys6oJOdg";
 
+const SUGGESTED_PROMPTS = [
+  "Plan evac in 4 stages using 3 Chinooks",
+  "Generate comms plan for night operation",
+  "Create QRF contingency for LZ Bravo",
+  "List all air assets for extraction",
+  "Draft SITREP for command staff"
+];
+
+const EVENT_TYPE_COLORS = {
+  Intel: "bg-blue-700",
+  Logistics: "bg-yellow-700",
+  "Air Assets": "bg-green-700",
+  Command: "bg-purple-700",
+  User: "bg-gray-700",
+  System: "bg-red-700",
+};
+
 export default function Home() {
   // State for PDF upload/summary
   const [pdfFile, setPdfFile] = useState<File | null>(null);
@@ -16,7 +33,7 @@ export default function Home() {
   const [summarizing, setSummarizing] = useState(false);
   const [targetLocation, setTargetLocation] = useState<string | null>(null);
   const [mapCoords, setMapCoords] = useState<{ lng: number; lat: number } | null>(null);
-  const [viewState, setViewState] = useState({
+  const [viewState, setViewState] = useState<any>({
     longitude: -98.5795,
     latitude: 39.8283,
     zoom: 3,
@@ -30,8 +47,9 @@ export default function Home() {
   const [planning, setPlanning] = useState(false);
 
   // State for logs and briefs
-  const [logs, setLogs] = useState<string[]>([]);
+  const [logs, setLogs] = useState<any[]>([]);
   const [briefs, setBriefs] = useState<string[]>([]);
+  const [logFilter, setLogFilter] = useState<string>("");
 
   // File input ref
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -59,11 +77,34 @@ export default function Home() {
     }
   }, [mapCoords]);
 
+  // Real-time logs polling
+  useEffect(() => {
+    const fetchLogs = () => {
+      let url = "http://localhost:8000/api/logs?limit=100";
+      if (logFilter) url += `&event_type=${encodeURIComponent(logFilter)}`;
+      fetch(url)
+        .then((res) => res.json())
+        .then((data) => setLogs(data.logs || []));
+    };
+    fetchLogs();
+    const interval = setInterval(fetchLogs, 3000);
+    return () => clearInterval(interval);
+  }, [logFilter]);
+
   // Handle PDF upload
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       setPdfFile(e.target.files[0]);
+      logUserAction("Intel", "PDF file selected", { filename: e.target.files[0].name });
     }
+  };
+
+  const logUserAction = async (event_type: string, message: string, details: any = {}) => {
+    await fetch("http://localhost:8000/api/log", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ event_type, message, details }),
+    });
   };
 
   const handleSummarize = async () => {
@@ -81,6 +122,7 @@ export default function Home() {
       const data = await res.json();
       console.log('PDF summary API response:', data); // Debug: log backend response
       setSummary(data.summary || "No summary returned.");
+      logUserAction("Intel", "PDF summarized", { summary: data.summary });
       // Each fallback must return immediately after a successful map update!
       // 1. Use coordinates directly from backend
       if (data.lat && data.lng) {
@@ -182,6 +224,7 @@ export default function Home() {
       });
       const data = await res.json();
       setPlan(data.plan || "No plan returned.");
+      logUserAction("Command", "Mission plan requested", { prompt: planPrompt });
     } catch {
       setPlan("Error generating plan.");
     }
@@ -234,13 +277,18 @@ export default function Home() {
           {/* Mission Planning (Natural Language) */}
           <div className="bg-gray-900/80 rounded-xl p-6 shadow-lg border border-gray-800">
             <h3 className="text-lg font-bold mb-2 text-white font-mono tracking-widest">Mission Planning</h3>
-            <input
-              type="text"
-              placeholder="e.g., Plan evac in 4 stages using 3 Chinooks"
-              value={planPrompt}
-              onChange={e => setPlanPrompt(e.target.value)}
-              className="w-full bg-gray-800 text-gray-200 rounded px-3 py-2 mb-2 font-mono tracking-widest"
-            />
+            <div className="flex flex-wrap gap-2 mb-2">
+              {SUGGESTED_PROMPTS.map((prompt) => (
+                <button
+                  key={prompt}
+                  className="bg-gray-800 hover:bg-blue-800 text-xs text-white px-3 py-1 rounded font-mono border border-gray-700"
+                  onClick={() => setPlanPrompt(prompt)}
+                  type="button"
+                >
+                  {prompt}
+                </button>
+              ))}
+            </div>
             <button
               className="border border-gray-600 bg-black/60 hover:bg-blue-800 text-white font-mono font-bold tracking-widest py-2 px-6 rounded transition disabled:opacity-50 shadow-md"
               onClick={handlePlan}
@@ -286,9 +334,42 @@ export default function Home() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {/* Logs/Intel Threads */}
             <div className="bg-gray-900/80 rounded-xl p-4 shadow border border-gray-800">
-              <h4 className="font-bold text-white mb-2 font-mono tracking-widest">Logs & Intel</h4>
-              <div className="text-xs text-gray-400 italic min-h-[2em] font-mono tracking-widest">
-                {logs.length > 0 ? logs.map((log, i) => <div key={i}>{log}</div>) : "Mission logs and intel threads will appear here."}
+              <h4 className="font-bold text-white mb-2 font-mono tracking-widest flex items-center gap-2">
+                Logs & Intel
+                <select
+                  className="ml-auto bg-gray-800 text-gray-200 rounded px-2 py-1 text-xs border border-gray-700"
+                  value={logFilter}
+                  onChange={e => setLogFilter(e.target.value)}
+                >
+                  <option value="">All</option>
+                  <option value="Intel">Intel</option>
+                  <option value="Logistics">Logistics</option>
+                  <option value="Air Assets">Air Assets</option>
+                  <option value="Command">Command</option>
+                  <option value="User">User</option>
+                  <option value="System">System</option>
+                </select>
+              </h4>
+              <div className="text-xs text-gray-400 font-mono tracking-widest max-h-48 overflow-y-auto">
+                {logs.length > 0 ? (
+                  logs.slice().reverse().map((log, i) => (
+                    <div key={i} className="mb-2 p-2 rounded bg-gray-800/70 flex flex-col gap-1 border-l-4" style={{ borderColor: EVENT_TYPE_COLORS[log.event_type as keyof typeof EVENT_TYPE_COLORS] || '#444' }}>
+                      <div className="flex items-center gap-2">
+                        <span className={`px-2 py-0.5 rounded text-xs font-bold ${EVENT_TYPE_COLORS[log.event_type as keyof typeof EVENT_TYPE_COLORS] || 'bg-gray-700'}`}>{log.event_type}</span>
+                        <span className="text-gray-500 text-[10px]">{new Date(log.timestamp).toLocaleTimeString()}</span>
+                      </div>
+                      <span className="text-white">{log.message}</span>
+                      {log.details && Object.keys(log.details).length > 0 && (
+                        <details className="text-gray-400 text-[10px]">
+                          <summary>Details</summary>
+                          <pre>{JSON.stringify(log.details, null, 2)}</pre>
+                        </details>
+                      )}
+                    </div>
+                  ))
+                ) : (
+                  <div>Mission logs and intel threads will appear here.</div>
+                )}
               </div>
             </div>
             {/* SITREP/CONOPS */}
