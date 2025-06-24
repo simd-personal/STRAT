@@ -89,6 +89,19 @@ export default function Home() {
   // Add offline/online toggle state
   const [isOffline, setIsOffline] = useState(false);
 
+  // Simulation state
+  const [simulationStatus, setSimulationStatus] = useState<'idle' | 'running' | 'paused' | 'completed' | 'error'>('idle');
+  const [simulationTime, setSimulationTime] = useState('0600');
+  const [simulationDuration, setSimulationDuration] = useState(0);
+  const [simulationAssets, setSimulationAssets] = useState<any>({});
+  const [simulationThreats, setSimulationThreats] = useState<any>({});
+  const [simulationWeather, setSimulationWeather] = useState<any>({});
+  const [simulationTimeline, setSimulationTimeline] = useState<any[]>([]);
+  const [simulationSpeed, setSimulationSpeed] = useState(5);
+  const [showSimulationPanel, setShowSimulationPanel] = useState(false);
+  const [injectEventDescription, setInjectEventDescription] = useState('');
+  const [showInjectModal, setShowInjectModal] = useState(false);
+
   // Track manual edits for unsaved changes
   useEffect(() => {
     if (planEdit !== (currentPlan?.content || "")) {
@@ -423,9 +436,157 @@ export default function Home() {
 
   // Add new function to start a new draft for SITREP
   const startNewSitrepDraft = () => {
-    setSitrep("");
+    setSitrepVersion(sitrepVersion + 1);
     setSitrepStatus("draft");
+    setSitrepHistory([...sitrepHistory, { content: sitrep, version: sitrepVersion, status: sitrepStatus, date: new Date().toISOString() }]);
+    setSitrep("");
   };
+
+  // Simulation API functions
+  const fetchSimulationStatus = async () => {
+    try {
+      const response = await fetch('http://localhost:8000/api/simulation/status');
+      const data = await response.json();
+      setSimulationStatus(data.status);
+      setSimulationTime(data.current_time);
+      setSimulationDuration(data.mission_duration);
+      setSimulationAssets(data.assets);
+      setSimulationThreats(data.threats);
+      setSimulationWeather(data.weather);
+      setSimulationTimeline(data.timeline || []);
+    } catch (error) {
+      console.error('Error fetching simulation status:', error);
+    }
+  };
+
+  const startSimulation = async () => {
+    try {
+      const response = await fetch('http://localhost:8000/api/simulation/start', { method: 'POST' });
+      const data = await response.json();
+      if (data.status === 'success') {
+        setSimulationStatus('running');
+        logUserAction("Simulation", "Mission simulation started");
+      }
+    } catch (error) {
+      console.error('Error starting simulation:', error);
+    }
+  };
+
+  const startRealTimeSimulation = async () => {
+    try {
+      const response = await fetch('http://localhost:8000/api/simulation/start-realtime', { method: 'POST' });
+      const data = await response.json();
+      if (data.status === 'success') {
+        setSimulationStatus('running');
+        logUserAction("Simulation", "Real-time mission simulation started");
+      }
+    } catch (error) {
+      console.error('Error starting real-time simulation:', error);
+    }
+  };
+
+  const pauseSimulation = async () => {
+    try {
+      const response = await fetch('http://localhost:8000/api/simulation/pause', { method: 'POST' });
+      const data = await response.json();
+      if (data.status === 'success') {
+        setSimulationStatus('paused');
+        logUserAction("Simulation", "Simulation paused");
+      }
+    } catch (error) {
+      console.error('Error pausing simulation:', error);
+    }
+  };
+
+  const resumeSimulation = async () => {
+    try {
+      const response = await fetch('http://localhost:8000/api/simulation/resume', { method: 'POST' });
+      const data = await response.json();
+      if (data.status === 'success') {
+        setSimulationStatus('running');
+        logUserAction("Simulation", "Simulation resumed");
+      }
+    } catch (error) {
+      console.error('Error resuming simulation:', error);
+    }
+  };
+
+  const stopSimulation = async () => {
+    try {
+      const response = await fetch('http://localhost:8000/api/simulation/stop', { method: 'POST' });
+      const data = await response.json();
+      if (data.status === 'success') {
+        setSimulationStatus('idle');
+        logUserAction("Simulation", "Simulation stopped");
+      }
+    } catch (error) {
+      console.error('Error stopping simulation:', error);
+    }
+  };
+
+  const stepSimulation = async () => {
+    try {
+      const response = await fetch('http://localhost:8000/api/simulation/step', { method: 'POST' });
+      const data = await response.json();
+      if (data.status === 'success') {
+        await fetchSimulationStatus();
+        logUserAction("Simulation", "Simulation step executed");
+      }
+    } catch (error) {
+      console.error('Error stepping simulation:', error);
+    }
+  };
+
+  const injectEvent = async () => {
+    if (!injectEventDescription.trim()) return;
+    
+    try {
+      const response = await fetch('http://localhost:8000/api/simulation/inject', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ description: injectEventDescription })
+      });
+      const data = await response.json();
+      if (data.status === 'success') {
+        setInjectEventDescription('');
+        setShowInjectModal(false);
+        await fetchSimulationStatus();
+        logUserAction("Simulation", `Event injected: ${injectEventDescription}`);
+      }
+    } catch (error) {
+      console.error('Error injecting event:', error);
+    }
+  };
+
+  const updateSimulationSpeed = async (speed: number) => {
+    try {
+      const response = await fetch('http://localhost:8000/api/simulation/set-speed', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ speed })
+      });
+      const data = await response.json();
+      if (data.status === 'success') {
+        setSimulationSpeed(speed);
+        logUserAction("Simulation", `Simulation speed set to ${speed} seconds`);
+      }
+    } catch (error) {
+      console.error('Error setting simulation speed:', error);
+    }
+  };
+
+  // Poll simulation status when running
+  useEffect(() => {
+    if (simulationStatus === 'running') {
+      const interval = setInterval(fetchSimulationStatus, 2000);
+      return () => clearInterval(interval);
+    }
+  }, [simulationStatus]);
+
+  // Initial fetch of simulation status
+  useEffect(() => {
+    fetchSimulationStatus();
+  }, []);
 
   return (
     <div className="min-h-screen bg-black text-gray-100 font-mono flex flex-col items-center px-4 py-8">
@@ -640,6 +801,159 @@ export default function Home() {
                 </button>
               </div>
             </div>
+          </div>
+
+          {/* Mission Simulation Panel */}
+          <div className="bg-gray-900/80 rounded-xl p-6 shadow-lg border border-gray-800">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-white font-mono tracking-widest">Mission Simulation</h3>
+              <button
+                className="bg-blue-800 hover:bg-blue-900 text-xs text-white px-3 py-1 rounded font-mono border border-gray-700"
+                onClick={() => setShowSimulationPanel(!showSimulationPanel)}
+              >
+                {showSimulationPanel ? 'Hide' : 'Show'} Timeline
+              </button>
+            </div>
+            
+            {/* Simulation Controls */}
+            <div className="flex flex-wrap gap-2 mb-4">
+              <button
+                className={`px-3 py-2 rounded font-mono text-xs font-bold border transition ${
+                  simulationStatus === 'idle' 
+                    ? 'bg-green-800 border-green-600 text-green-200 hover:bg-green-700' 
+                    : 'bg-gray-700 border-gray-600 text-gray-300'
+                }`}
+                onClick={startSimulation}
+                disabled={simulationStatus !== 'idle'}
+              >
+                Start Simulation
+              </button>
+              <button
+                className={`px-3 py-2 rounded font-mono text-xs font-bold border transition ${
+                  simulationStatus === 'idle' 
+                    ? 'bg-blue-800 border-blue-600 text-blue-200 hover:bg-blue-700' 
+                    : 'bg-gray-700 border-gray-600 text-gray-300'
+                }`}
+                onClick={startRealTimeSimulation}
+                disabled={simulationStatus !== 'idle'}
+              >
+                Start Real-Time
+              </button>
+              <button
+                className={`px-3 py-2 rounded font-mono text-xs font-bold border transition ${
+                  simulationStatus === 'running' 
+                    ? 'bg-yellow-800 border-yellow-600 text-yellow-200 hover:bg-yellow-700' 
+                    : 'bg-gray-700 border-gray-600 text-gray-300'
+                }`}
+                onClick={pauseSimulation}
+                disabled={simulationStatus !== 'running'}
+              >
+                Pause
+              </button>
+              <button
+                className={`px-3 py-2 rounded font-mono text-xs font-bold border transition ${
+                  simulationStatus === 'paused' 
+                    ? 'bg-green-800 border-green-600 text-green-200 hover:bg-green-700' 
+                    : 'bg-gray-700 border-gray-600 text-gray-300'
+                }`}
+                onClick={resumeSimulation}
+                disabled={simulationStatus !== 'paused'}
+              >
+                Resume
+              </button>
+              <button
+                className={`px-3 py-2 rounded font-mono text-xs font-bold border transition ${
+                  simulationStatus !== 'idle' 
+                    ? 'bg-red-800 border-red-600 text-red-200 hover:bg-red-700' 
+                    : 'bg-gray-700 border-gray-600 text-gray-300'
+                }`}
+                onClick={stopSimulation}
+                disabled={simulationStatus === 'idle'}
+              >
+                Stop
+              </button>
+              <button
+                className="px-3 py-2 rounded font-mono text-xs font-bold border bg-purple-800 border-purple-600 text-purple-200 hover:bg-purple-700 transition"
+                onClick={stepSimulation}
+                disabled={simulationStatus === 'running'}
+              >
+                Step Forward
+              </button>
+              <button
+                className="px-3 py-2 rounded font-mono text-xs font-bold border bg-orange-800 border-orange-600 text-orange-200 hover:bg-orange-700 transition"
+                onClick={() => setShowInjectModal(true)}
+              >
+                Inject Event
+              </button>
+            </div>
+
+            {/* Simulation Status */}
+            <div className="grid grid-cols-2 gap-4 mb-4 text-sm">
+              <div className="bg-gray-800/50 p-3 rounded border border-gray-700">
+                <div className="text-gray-400 font-mono">Status</div>
+                <div className={`font-bold ${simulationStatus === 'running' ? 'text-green-400' : simulationStatus === 'paused' ? 'text-yellow-400' : simulationStatus === 'completed' ? 'text-blue-400' : 'text-gray-400'}`}>
+                  {simulationStatus.toUpperCase()}
+                </div>
+              </div>
+              <div className="bg-gray-800/50 p-3 rounded border border-gray-700">
+                <div className="text-gray-400 font-mono">Time</div>
+                <div className="font-bold text-white">{simulationTime}</div>
+              </div>
+              <div className="bg-gray-800/50 p-3 rounded border border-gray-700">
+                <div className="text-gray-400 font-mono">Duration</div>
+                <div className="font-bold text-white">{simulationDuration} min</div>
+              </div>
+              <div className="bg-gray-800/50 p-3 rounded border border-gray-700">
+                <div className="text-gray-400 font-mono">Speed</div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="range"
+                    min="1"
+                    max="60"
+                    value={simulationSpeed}
+                    onChange={(e) => updateSimulationSpeed(Number(e.target.value))}
+                    className="flex-1"
+                  />
+                  <span className="text-xs text-white">{simulationSpeed}s</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Simulation Timeline */}
+            {showSimulationPanel && (
+              <div className="bg-gray-800/50 rounded border border-gray-700 p-4 max-h-64 overflow-y-auto">
+                <h4 className="font-bold text-white mb-3 font-mono tracking-widest">Timeline</h4>
+                {simulationTimeline.length > 0 ? (
+                  <div className="space-y-2">
+                    {simulationTimeline.slice().reverse().map((event, index) => (
+                      <div key={index} className="bg-gray-700/50 p-3 rounded border-l-4 border-blue-500">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-xs font-bold text-blue-400">{event.time}</span>
+                          <span className={`px-2 py-0.5 rounded text-xs font-bold ${
+                            event.type === 'asset' ? 'bg-green-700' : 
+                            event.type === 'threat' ? 'bg-red-700' : 
+                            event.type === 'weather' ? 'bg-blue-700' : 'bg-gray-700'
+                          }`}>
+                            {event.type.toUpperCase()}
+                          </span>
+                        </div>
+                        <div className="text-sm text-white">{event.narrative}</div>
+                        {event.details && (
+                          <details className="mt-2">
+                            <summary className="text-xs text-gray-400 cursor-pointer">Details</summary>
+                            <pre className="text-xs text-gray-300 mt-1 bg-gray-800 p-2 rounded overflow-x-auto">
+                              {JSON.stringify(event.details, null, 2)}
+                            </pre>
+                          </details>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-gray-500 italic text-center py-8">No simulation events yet. Start the simulation to see the timeline.</div>
+                )}
+              </div>
+            )}
           </div>
         </section>
 
@@ -856,6 +1170,47 @@ export default function Home() {
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Inject Event Modal */}
+      {showInjectModal && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+          <div className="bg-gray-900 rounded-xl p-6 max-w-md w-full shadow-lg border border-gray-800 relative">
+            <button
+              className="absolute top-2 right-2 text-gray-400 hover:text-white text-2xl"
+              onClick={() => setShowInjectModal(false)}
+              title="Close"
+            >
+              ×
+            </button>
+            <h2 className="text-lg font-bold mb-4 text-white">Inject Event</h2>
+            <p className="text-gray-400 text-sm mb-4">
+              Describe an event to inject into the simulation (e.g., &quot;Sniper ambush from east&quot;, &quot;Weather change to heavy rain&quot;)
+            </p>
+            <textarea
+              className="w-full bg-gray-800 text-gray-200 rounded px-4 py-3 font-mono text-sm leading-relaxed resize-vertical focus:outline-none focus:ring-2 focus:ring-blue-700 border border-gray-700 mb-4"
+              value={injectEventDescription}
+              onChange={(e) => setInjectEventDescription(e.target.value)}
+              placeholder="Describe the event to inject..."
+              rows={3}
+            />
+            <div className="flex gap-2 justify-end">
+              <button
+                className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded font-mono text-sm"
+                onClick={() => setShowInjectModal(false)}
+              >
+                Cancel
+              </button>
+              <button
+                className="bg-orange-800 hover:bg-orange-700 text-white px-4 py-2 rounded font-mono text-sm"
+                onClick={injectEvent}
+                disabled={!injectEventDescription.trim()}
+              >
+                Inject Event
+              </button>
+            </div>
           </div>
         </div>
       )}
