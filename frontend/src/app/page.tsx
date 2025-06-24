@@ -7,13 +7,22 @@ import dynamic from "next/dynamic";
 const Map = dynamic(() => import("react-map-gl/mapbox").then(mod => mod.Map), { ssr: false });
 const Marker = dynamic(() => import("react-map-gl/mapbox").then(mod => mod.Marker), { ssr: false });
 
-const MAPBOX_TOKEN = "pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4NXVycTA2emYycXBndjJmbWl2bGQifQ._-QZ5N1pZQw5v5Q5Q5Q5Qw"; // Public demo token
+const MAPBOX_TOKEN = "pk.eyJ1Ijoic3NkMzYwIiwiYSI6ImNtYzlzNGh6NTF3bXMyanEwdWttajNrZjUifQ.9sOzbXQl4ORfE8Ys6oJOdg";
 
 export default function Home() {
   // State for PDF upload/summary
   const [pdfFile, setPdfFile] = useState<File | null>(null);
   const [summary, setSummary] = useState<string>("");
   const [summarizing, setSummarizing] = useState(false);
+  const [targetLocation, setTargetLocation] = useState<string | null>(null);
+  const [mapCoords, setMapCoords] = useState<{ lng: number; lat: number } | null>(null);
+  const [viewState, setViewState] = useState({
+    longitude: -98.5795,
+    latitude: 39.8283,
+    zoom: 3,
+    bearing: 0,
+    pitch: 0,
+  });
 
   // State for mission planning
   const [planPrompt, setPlanPrompt] = useState("");
@@ -37,6 +46,19 @@ export default function Home() {
       .then((data) => setBriefs(data.briefs || []));
   }, []);
 
+  // Update viewState when mapCoords changes
+  useEffect(() => {
+    if (mapCoords) {
+      setViewState({
+        longitude: mapCoords.lng,
+        latitude: mapCoords.lat,
+        zoom: 10,
+        bearing: 0,
+        pitch: 0,
+      });
+    }
+  }, [mapCoords]);
+
   // Handle PDF upload
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -48,6 +70,7 @@ export default function Home() {
     if (!pdfFile) return;
     setSummarizing(true);
     setSummary("");
+    setMapCoords(null);
     const formData = new FormData();
     formData.append("file", pdfFile);
     try {
@@ -56,7 +79,89 @@ export default function Home() {
         body: formData,
       });
       const data = await res.json();
+      console.log('PDF summary API response:', data); // Debug: log backend response
       setSummary(data.summary || "No summary returned.");
+      // Each fallback must return immediately after a successful map update!
+      // 1. Use coordinates directly from backend
+      if (data.lat && data.lng) {
+        const latNum = Number(data.lat);
+        const lngNum = Number(data.lng);
+        console.log('lat:', data.lat, typeof data.lat, 'lng:', data.lng, typeof data.lng);
+        setMapCoords({ lat: latNum, lng: lngNum });
+        console.log('Setting mapCoords:', { lat: latNum, lng: lngNum });
+        setSummarizing(false);
+        return;
+      }
+      // 2. Fallback: Geocode the location name from backend
+      if (data.location_name) {
+        const geoRes = await fetch(
+          `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(data.location_name)}.json?access_token=${MAPBOX_TOKEN}`
+        );
+        const geoData = await geoRes.json();
+        if (geoData.features && geoData.features.length > 0) {
+          const [lng, lat] = geoData.features[0].center;
+          setMapCoords({ lat, lng });
+          setSummarizing(false);
+          return;
+        }
+      }
+      // 3. Fallback: Try to extract a city/country from the summary and geocode it
+      if (data.summary) {
+        const match = data.summary.match(/([A-Z][a-z]+(?: [A-Z][a-z]+)*,? [A-Z][a-z]+)/);
+        if (match) {
+          const place = match[0];
+          const geoRes = await fetch(
+            `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(place)}.json?access_token=${MAPBOX_TOKEN}`
+          );
+          const geoData = await geoRes.json();
+          if (geoData.features && geoData.features.length > 0) {
+            const [lng, lat] = geoData.features[0].center;
+            setMapCoords({ lat, lng });
+            setSummarizing(false);
+            return;
+          }
+        }
+      }
+      // 4. Fallback: Try city+country from backend
+      if (data.city && data.country) {
+        const place = `${data.city}, ${data.country}`;
+        const geoRes = await fetch(
+          `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(place)}.json?access_token=${MAPBOX_TOKEN}`
+        );
+        const geoData = await geoRes.json();
+        if (geoData.features && geoData.features.length > 0) {
+          const [lng, lat] = geoData.features[0].center;
+          setMapCoords({ lat, lng });
+          setSummarizing(false);
+          return;
+        }
+      }
+      // 5. Fallback: Try city only
+      if (data.city) {
+        const geoRes = await fetch(
+          `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(data.city)}.json?access_token=${MAPBOX_TOKEN}`
+        );
+        const geoData = await geoRes.json();
+        if (geoData.features && geoData.features.length > 0) {
+          const [lng, lat] = geoData.features[0].center;
+          setMapCoords({ lat, lng });
+          setSummarizing(false);
+          return;
+        }
+      }
+      // 6. Fallback: Try country only
+      if (data.country) {
+        const geoRes = await fetch(
+          `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(data.country)}.json?access_token=${MAPBOX_TOKEN}`
+        );
+        const geoData = await geoRes.json();
+        if (geoData.features && geoData.features.length > 0) {
+          const [lng, lat] = geoData.features[0].center;
+          setMapCoords({ lat, lng });
+          setSummarizing(false);
+          return;
+        }
+      }
     } catch {
       setSummary("Error summarizing PDF.");
     }
@@ -157,12 +262,21 @@ export default function Home() {
             <div className="flex-1 flex items-center justify-center text-gray-500 italic border-2 border-dashed border-gray-700 rounded-lg">
               <div className="w-full h-full" style={{ minHeight: 200 }}>
                 <Map
-                  initialViewState={{ longitude: -98.5795, latitude: 39.8283, zoom: 3 }}
+                  viewState={viewState}
+                  onMove={evt => setViewState(evt.viewState)}
                   style={{ width: "100%", height: "200px", borderRadius: "0.5rem" }}
-                  mapStyle="mapbox://styles/mapbox/dark-v11"
+                  mapStyle="mapbox://styles/mapbox/satellite-streets-v12"
                   mapboxAccessToken={MAPBOX_TOKEN}
                 >
-                  <Marker longitude={-98.5795} latitude={39.8283} color="#e11d48" />
+                  {mapCoords && (
+                    <Marker longitude={mapCoords.lng} latitude={mapCoords.lat} anchor="bottom">
+                      <svg width="24" height="32" viewBox="0 0 24 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <ellipse cx="12" cy="10" rx="8" ry="8" fill="#38bdf8" fillOpacity="0.95"/>
+                        <rect x="10" y="10" width="4" height="14" rx="2" fill="#38bdf8" fillOpacity="0.95"/>
+                        <ellipse cx="12" cy="10" rx="3" ry="3" fill="#fff"/>
+                      </svg>
+                    </Marker>
+                  )}
                 </Map>
               </div>
             </div>
