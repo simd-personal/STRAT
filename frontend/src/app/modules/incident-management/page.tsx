@@ -248,7 +248,12 @@ export default function IncidentManagement() {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 bg-[#A3B18A] rounded-lg flex items-center justify-center">
-              <span className="text-[#181A1B] font-bold text-lg">🚨</span>
+              {/* Sophisticated SVG placeholder icon */}
+              <svg width="28" height="28" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <rect x="4" y="4" width="20" height="20" rx="6" fill="#23272f" stroke="#A3B18A" strokeWidth="2"/>
+                <path d="M14 8V16" stroke="#A3B18A" strokeWidth="2.2" strokeLinecap="round"/>
+                <circle cx="14" cy="20" r="1.5" fill="#A3B18A"/>
+              </svg>
             </div>
             <div>
               <h1 className="text-2xl font-bold tracking-wider text-[#F3F3E7]">Incident Management</h1>
@@ -300,9 +305,10 @@ export default function IncidentManagement() {
             className="px-4 py-2 bg-[#23272f] border border-[#A3B18A] rounded-lg text-[#F3F3E7]"
           >
             <option value="">All Priorities</option>
-            <option value="high">High</option>
-            <option value="medium">Medium</option>
-            <option value="low">Low</option>
+            <option value="1">Priority 1 (Highest)</option>
+            <option value="2">Priority 2</option>
+            <option value="3">Priority 3</option>
+            <option value="4">Priority 4 (Lowest)</option>
           </select>
         </div>
 
