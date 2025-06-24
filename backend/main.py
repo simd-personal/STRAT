@@ -13,6 +13,8 @@ import asyncio
 import json
 import random
 from enum import Enum
+import httpx
+from urllib.parse import quote
 
 # Load environment variables from .env file
 load_dotenv()
@@ -982,6 +984,268 @@ async def set_fast_simulation_speed(body: dict = Body(...)):
         "message": f"Fast simulation speed set to {speed} seconds",
         "speed": fast_simulation_speed
     }
+
+# --- Route Optimization API Endpoints ---
+
+@app.post("/api/route-optimization/evaluate")
+async def evaluate_routes(request: Request):
+    """Evaluate optimal routes based on start/end locations, threats, and terrain"""
+    try:
+        form = await request.form()
+        
+        start_location = form.get("start_location", "")
+        end_location = form.get("end_location", "")
+        threats = form.get("threats", "[]")
+        weather = form.get("weather", "Clear")
+        terrain_file = form.get("terrain_file")
+        custom_prompt = form.get("custom_prompt", "")
+        
+        # Parse threats from JSON string
+        try:
+            threat_list = json.loads(threats) if threats else []
+        except:
+            threat_list = []
+        
+        # Build the evaluation prompt
+        base_prompt = """Given the unit's start and end locations, threat locations, and terrain data, evaluate 3 possible infiltration routes. Score them on:
+- Stealth (1-10)
+- Time to objective (1-10, lower is faster)
+- Risk of enemy contact (1-10, lower is safer)
+
+Return a JSON object with this structure:
+{
+    "routes": [
+        {
+            "name": "Route Name",
+            "description": "Brief description",
+            "waypoints": [{"lat": float, "lng": float}, ...],
+            "scores": {
+                "stealth": int,
+                "time": int,
+                "risk": int
+            },
+            "total_score": int,
+            "estimated_time": "HH:MM",
+            "notes": "Additional considerations"
+        }
+    ],
+    "threat_analysis": "Analysis of threat impact on routes",
+    "recommendation": "Recommended route with justification"
+}"""
+        
+        # Combine with custom prompt if provided
+        if custom_prompt:
+            evaluation_prompt = f"{base_prompt}\n\nAdditional considerations: {custom_prompt}"
+        else:
+            evaluation_prompt = base_prompt
+        
+        # Build context for AI
+        context = f"""
+Start Location: {start_location}
+End Location: {end_location}
+Weather Conditions: {weather}
+Threat Locations: {', '.join(threat_list) if threat_list else 'None specified'}
+"""
+        
+        # Process terrain file if provided
+        terrain_analysis = ""
+        if terrain_file:
+            terrain_analysis = "\nTerrain data has been uploaded and should be considered in route planning."
+        
+        # Call OpenAI for route evaluation
+        response = client.chat.completions.create(
+            model="gpt-4-turbo-preview",
+            messages=[
+                {"role": "system", "content": "You are a military route optimization expert. Analyze infiltration routes considering terrain, threats, and tactical considerations."},
+                {"role": "user", "content": f"{evaluation_prompt}\n\nMission Context:\n{context}{terrain_analysis}"}
+            ],
+            max_tokens=2000,
+            temperature=0.3
+        )
+        
+        result_text = response.choices[0].message.content.strip()
+        
+        # Try to parse JSON response
+        try:
+            result = json.loads(result_text)
+        except json.JSONDecodeError:
+            # If JSON parsing fails, return a structured response
+            result = {
+                "routes": [
+                    {
+                        "name": "Primary Route",
+                        "description": "Direct path with minimal exposure",
+                        "waypoints": [
+                            {"lat": 34.05, "lng": -118.25},
+                            {"lat": 34.00, "lng": -118.20},
+                            {"lat": 33.94, "lng": -117.40}
+                        ],
+                        "scores": {"stealth": 7, "time": 6, "risk": 5},
+                        "total_score": 18,
+                        "estimated_time": "02:30",
+                        "notes": "Primary route with good cover and concealment"
+                    },
+                    {
+                        "name": "Alternate Route",
+                        "description": "Longer path with better terrain",
+                        "waypoints": [
+                            {"lat": 34.05, "lng": -118.25},
+                            {"lat": 34.10, "lng": -118.30},
+                            {"lat": 34.15, "lng": -118.35},
+                            {"lat": 33.94, "lng": -117.40}
+                        ],
+                        "scores": {"stealth": 9, "time": 4, "risk": 3},
+                        "total_score": 16,
+                        "estimated_time": "03:45",
+                        "notes": "Longer but safer route with excellent terrain"
+                    },
+                    {
+                        "name": "Contingency Route",
+                        "description": "Emergency egress path",
+                        "waypoints": [
+                            {"lat": 34.05, "lng": -118.25},
+                            {"lat": 33.95, "lng": -118.15},
+                            {"lat": 33.94, "lng": -117.40}
+                        ],
+                        "scores": {"stealth": 5, "time": 8, "risk": 7},
+                        "total_score": 20,
+                        "estimated_time": "01:45",
+                        "notes": "Fastest route but higher risk"
+                    }
+                ],
+                "threat_analysis": "AI analysis failed to parse. Using default route evaluation.",
+                "recommendation": "Primary Route recommended for balanced approach."
+            }
+        
+        # Log the route evaluation
+        log_event("Route Optimization", "Routes evaluated", {
+            "start": start_location,
+            "end": end_location,
+            "threats": threat_list,
+            "weather": weather,
+            "routes_count": len(result.get("routes", []))
+        })
+        
+        return {
+            "status": "success",
+            "routes": result.get("routes", []),
+            "threat_analysis": result.get("threat_analysis", ""),
+            "recommendation": result.get("recommendation", ""),
+            "context": {
+                "start_location": start_location,
+                "end_location": end_location,
+                "weather": weather,
+                "threats": threat_list
+            }
+        }
+        
+    except Exception as e:
+        log_event("System", f"Route optimization error: {str(e)}")
+        return {"status": "error", "message": str(e)}
+
+@app.post("/api/route-optimization/geocode")
+async def geocode_location(request: Request):
+    """Geocode a location name to coordinates"""
+    try:
+        form = await request.form()
+        location_name = form.get("location", "")
+        
+        if not location_name:
+            return {"status": "error", "message": "Location name required"}
+        
+        # Use Mapbox geocoding API
+        mapbox_token = "pk.eyJ1Ijoic3NkMzYwIiwiYSI6ImNtYzlzNGh6NTF3bXMyanEwdWttajNrZjUifQ.9sOzbXQl4ORfE8Ys6oJOdg"
+        url = f"https://api.mapbox.com/geocoding/v5/mapbox.places/{quote(location_name)}.json?access_token={mapbox_token}"
+        
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url)
+            data = response.json()
+            
+            if data.get("features") and len(data["features"]) > 0:
+                feature = data["features"][0]
+                coordinates = feature["center"]  # [lng, lat]
+                
+                return {
+                    "status": "success",
+                    "coordinates": {
+                        "lat": coordinates[1],
+                        "lng": coordinates[0]
+                    },
+                    "place_name": feature.get("place_name", location_name)
+                }
+            else:
+                return {"status": "error", "message": "Location not found"}
+                
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+@app.post("/api/route-optimization/analyze-threats")
+async def analyze_threats(request: Request):
+    """Analyze threat impact on route planning"""
+    try:
+        form = await request.form()
+        threats = form.get("threats", "[]")
+        route_waypoints = form.get("route_waypoints", "[]")
+        
+        # Parse inputs
+        try:
+            threat_list = json.loads(threats) if threats else []
+            waypoints = json.loads(route_waypoints) if route_waypoints else []
+        except:
+            return {"status": "error", "message": "Invalid JSON data"}
+        
+        # Build threat analysis prompt
+        analysis_prompt = f"""
+Analyze the following threats and their potential impact on route planning:
+
+Threats: {', '.join(threat_list) if threat_list else 'None specified'}
+Route Waypoints: {len(waypoints)} waypoints
+
+Provide a threat analysis including:
+1. Threat categorization (IED, sniper, ambush, etc.)
+2. Risk assessment for each threat
+3. Recommended mitigation strategies
+4. Impact on route selection
+
+Return as JSON:
+{{
+    "threat_categories": ["category1", "category2"],
+    "risk_assessment": "Overall risk level and analysis",
+    "mitigation_strategies": ["strategy1", "strategy2"],
+    "route_impact": "How threats affect route planning"
+}}
+"""
+        
+        # Call OpenAI for threat analysis
+        response = client.chat.completions.create(
+            model="gpt-4-turbo-preview",
+            messages=[
+                {"role": "system", "content": "You are a military threat analysis expert."},
+                {"role": "user", "content": analysis_prompt}
+            ],
+            max_tokens=1000,
+            temperature=0.3
+        )
+        
+        result_text = response.choices[0].message.content.strip()
+        
+        try:
+            result = json.loads(result_text)
+        except json.JSONDecodeError:
+            result = {
+                "threat_categories": ["Unknown"],
+                "risk_assessment": "Unable to analyze threats with provided data",
+                "mitigation_strategies": ["Maintain situational awareness", "Use cover and concealment"],
+                "route_impact": "Threats may require route adjustments"
+            }
+        
+        return {
+            "status": "success",
+            "analysis": result
+        }
+        
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 
 if __name__ == "__main__":
     import uvicorn
