@@ -733,9 +733,10 @@ export default function Home() {
             <div className="bg-gray-900/80 rounded-xl p-6 shadow-lg border border-gray-800">
               <h3 className="text-lg font-bold mb-2 text-white font-mono tracking-widest">Upload Mission Docs</h3>
               <div className="flex flex-col gap-2">
+                <span className="text-xs text-gray-400">Accepts PDF, TXT, CSV, JSON, images, and video files</span>
                 <input
                   type="file"
-                  accept="application/pdf"
+                  accept=".pdf,.txt,.csv,.json,image/*,video/*"
                   ref={fileInputRef}
                   onChange={handleFileChange}
                   className="file:bg-gray-800 file:text-gray-200 file:border-none file:rounded file:px-4 file:py-2 file:mr-4 font-mono tracking-widest"
@@ -1398,6 +1399,15 @@ export default function Home() {
             ) : aarReport ? (
               <div>
                 <div className="font-bold text-white mb-2">Mission: {aarReport.mission_name}</div>
+                <button
+                  className="mb-2 bg-blue-800 hover:bg-blue-900 text-xs text-white px-3 py-1 rounded font-mono border border-blue-700 transition"
+                  onClick={() => {
+                    navigator.clipboard.writeText(aarReport.summary);
+                    notify.success('AAR copied to clipboard!');
+                  }}
+                >
+                  Copy Report
+                </button>
                 <pre className="bg-gray-800 text-gray-200 rounded p-4 whitespace-pre-wrap max-h-96 overflow-y-auto border border-gray-700">{aarReport.summary}</pre>
               </div>
             ) : (
