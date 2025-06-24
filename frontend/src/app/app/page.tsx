@@ -95,7 +95,7 @@ export default function Home() {
   const [isOffline, setIsOffline] = useState(false);
 
   // Simulation state
-  const [simulationStatus, setSimulationStatus] = useState<'idle' | 'running' | 'paused' | 'completed' | 'error'>('idle');
+  const [simulationStatus, setSimulationStatus] = useState<'idle' | 'running' | 'paused' | 'completed' | 'error' | 'stalled'>('idle');
   const [simulationTime, setSimulationTime] = useState('0600');
   const [simulationDuration, setSimulationDuration] = useState(0);
   const [simulationAssets, setSimulationAssets] = useState<any>({});
@@ -114,6 +114,15 @@ export default function Home() {
 
   // Add new state for simulation starting
   const [simulationStarting, setSimulationStarting] = useState(false);
+
+  // Add new state for reports
+  const [showReportsModal, setShowReportsModal] = useState(false);
+  const [aarReport, setAarReport] = useState<{ mission_name: string; summary: string } | null>(null);
+  const [aarLoading, setAarLoading] = useState(false);
+  const [aarError, setAarError] = useState<string | null>(null);
+
+  // Disable controls if simulation is completed or stalled
+  const controlsDisabled = simulationStatus === 'completed' || simulationStatus === 'stalled';
 
   // Track manual edits for unsaved changes
   useEffect(() => {
@@ -669,6 +678,36 @@ export default function Home() {
     });
   };
 
+  // Add a useEffect to watch simulationStatus and show toasts for completed/stalled
+  useEffect(() => {
+    if (simulationStatus === 'completed') {
+      notify.success('Mission completed!');
+      logUserAction('Simulation', 'Mission completed');
+    } else if (simulationStatus === 'stalled') {
+      notify.error('Simulation stalled: only weather events generated for several steps.');
+      logUserAction('Simulation', 'Simulation stalled: only weather events generated for several steps.');
+    }
+  }, [simulationStatus]);
+
+  // Fetch AAR
+  const fetchAAR = async () => {
+    setAarLoading(true);
+    setAarError(null);
+    try {
+      const res = await fetch('http://localhost:8000/api/reports/aar');
+      const data = await res.json();
+      if (data.status === 'success') {
+        setAarReport(data.aar);
+      } else {
+        setAarError(data.message || 'No report available');
+      }
+    } catch (err) {
+      setAarError('Failed to fetch report');
+    } finally {
+      setAarLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-black text-gray-100 font-mono flex flex-col items-center px-4 py-8">
       {/* Header */}
@@ -947,7 +986,7 @@ export default function Home() {
                 <button
                   className="px-3 py-2 rounded font-mono text-xs font-bold border bg-blue-800 border-blue-600 text-blue-200 hover:bg-blue-700 transition"
                   onClick={startFastSimulation}
-                  disabled={simulationStatus === 'running' || simulationStarting}
+                  disabled={controlsDisabled || simulationStarting}
                 >
                   Start Simulation
                 </button>
@@ -958,7 +997,7 @@ export default function Home() {
                       : 'bg-gray-700 border-gray-600 text-gray-300'
                   }`}
                   onClick={startRealTimeSimulation}
-                  disabled={simulationStatus !== 'idle'}
+                  disabled={controlsDisabled}
                 >
                   Start Real-Time
                 </button>
@@ -969,7 +1008,7 @@ export default function Home() {
                       : 'bg-gray-700 border-gray-600 text-gray-300'
                   }`}
                   onClick={pauseSimulation}
-                  disabled={simulationStatus !== 'running'}
+                  disabled={controlsDisabled}
                 >
                   Pause
                 </button>
@@ -980,7 +1019,7 @@ export default function Home() {
                       : 'bg-gray-700 border-gray-600 text-gray-300'
                   }`}
                   onClick={resumeSimulation}
-                  disabled={simulationStatus !== 'paused'}
+                  disabled={controlsDisabled}
                 >
                   Resume
                 </button>
@@ -991,14 +1030,14 @@ export default function Home() {
                       : 'bg-gray-700 border-gray-600 text-gray-300'
                   }`}
                   onClick={stopSimulation}
-                  disabled={simulationStatus === 'idle'}
+                  disabled={controlsDisabled}
                 >
                   Stop
                 </button>
                 <button
                   className="px-3 py-2 rounded font-mono text-xs font-bold border bg-purple-800 border-purple-600 text-purple-200 hover:bg-purple-700 transition"
                   onClick={stepSimulation}
-                  disabled={simulationStatus === 'running'}
+                  disabled={controlsDisabled}
                 >
                   Step Forward
                 </button>
@@ -1007,6 +1046,12 @@ export default function Home() {
                   onClick={() => setShowInjectModal(true)}
                 >
                   Inject Event
+                </button>
+                <button
+                  className="px-3 py-2 rounded font-mono text-xs font-bold border bg-gray-700 border-gray-600 text-white hover:bg-gray-800 transition"
+                  onClick={() => { setShowReportsModal(true); fetchAAR(); }}
+                >
+                  Reports
                 </button>
               </div>
 
@@ -1324,6 +1369,40 @@ export default function Home() {
                 Inject Event
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reports Modal */}
+      {showReportsModal && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+          <div className="bg-gray-900 rounded-xl p-6 max-w-lg w-full shadow-lg border border-gray-800 relative">
+            <button
+              className="absolute top-2 right-2 text-gray-400 hover:text-white text-2xl"
+              onClick={() => setShowReportsModal(false)}
+              title="Close"
+            >
+              ×
+            </button>
+            <h2 className="text-lg font-bold mb-4 text-white">After Action Report</h2>
+            {aarLoading ? (
+              <div className="flex items-center gap-2 text-blue-400 animate-pulse mb-4">
+                <svg className="w-5 h-5 animate-spin" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
+                </svg>
+                <span>Loading report...</span>
+              </div>
+            ) : aarError ? (
+              <div className="text-red-400 font-mono mb-4">{aarError}</div>
+            ) : aarReport ? (
+              <div>
+                <div className="font-bold text-white mb-2">Mission: {aarReport.mission_name}</div>
+                <pre className="bg-gray-800 text-gray-200 rounded p-4 whitespace-pre-wrap max-h-96 overflow-y-auto border border-gray-700">{aarReport.summary}</pre>
+              </div>
+            ) : (
+              <div className="text-gray-400 font-mono">No report available.</div>
+            )}
           </div>
         </div>
       )}
