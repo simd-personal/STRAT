@@ -173,6 +173,9 @@ export default function IncidentManagement() {
       return true;
     });
 
+  // Filter incidents for map display - exclude resolved incidents
+  const mapIncidents = incidents.filter(incident => incident.status !== "resolved");
+
   const getPriorityColor = (priority: string) => {
     switch (priority) {
       case "high": return "text-red-400 bg-red-900/20";
@@ -259,7 +262,7 @@ export default function IncidentManagement() {
         <div style={{ width: '500px', height: '300px', borderRadius: '16px', overflow: 'hidden', boxShadow: '0 2px 12px #0006' }}>
           <GoogleOpsMap
             units={TEST_UNITS}
-            incidents={incidents}
+            incidents={mapIncidents}
             center={mapCenter}
             zoom={mapZoom}
             selectedIncidentId={selectedIncidentId ?? undefined}
