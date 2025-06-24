@@ -748,20 +748,36 @@ export default function Home() {
                 <div className="text-xs text-gray-400 mt-2">History: {sitrepHistory.length} versions</div>
               </div>
             </div>
-          </div>
+        </div>
         </section>
       </main>
 
       {/* Offline Toggle - Fixed and always visible */}
-      <div className="fixed top-6 right-6 z-[9999] sm:top-4 sm:right-4" style={{ position: 'fixed', top: '24px', right: '24px', zIndex: 9999 }}>
+      <div 
+        className="fixed top-4 right-4 z-[9999] pointer-events-auto" 
+        style={{ 
+          position: 'fixed', 
+          top: '16px', 
+          right: '16px', 
+          zIndex: 9999,
+          pointerEvents: 'auto'
+        }}
+      >
         <button
-          className={`flex items-center gap-2 px-4 py-2 rounded-full shadow-xl border-2 ${isOffline ? 'bg-red-900 border-red-700 text-red-200' : 'bg-green-900 border-green-700 text-green-200'} transition-colors hover:scale-105`}
+          className={`flex items-center gap-2 px-4 py-2 rounded-full shadow-2xl border-2 backdrop-blur-sm ${isOffline ? 'bg-red-600 border-red-500 text-white' : 'bg-green-600 border-green-500 text-white'} transition-all duration-200 hover:scale-105 hover:shadow-3xl`}
           onClick={() => setIsOffline(!isOffline)}
           title={isOffline ? 'Switch to Online Mode' : 'Switch to Offline Mode'}
-          style={{ pointerEvents: 'auto' }}
+          style={{ 
+            pointerEvents: 'auto',
+            boxShadow: '0 10px 25px rgba(0,0,0,0.8)',
+            backdropFilter: 'blur(10px)',
+            backgroundColor: isOffline ? '#dc2626' : '#16a34a',
+            borderColor: isOffline ? '#ef4444' : '#22c55e'
+          }}
         >
-          <span className="font-bold text-xs tracking-widest uppercase">
-            {isOffline ? 'OFFLINE MODE' : 'ONLINE MODE'}
+          <div className={`w-3 h-3 rounded-full ${isOffline ? 'bg-red-200' : 'bg-green-200'} animate-pulse`}></div>
+          <span className="font-bold text-sm tracking-widest uppercase">
+            {isOffline ? 'OFFLINE' : 'ONLINE'}
           </span>
         </button>
       </div>
