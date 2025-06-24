@@ -77,6 +77,16 @@ export default function Home() {
   const [compareIdxB, setCompareIdxB] = useState<number | null>(null);
   const [showCompareModal, setShowCompareModal] = useState(false);
 
+  // SITREP/CONOPS state
+  const [sitrep, setSitrep] = useState<string>("");
+  const [conops, setConops] = useState<string>("");
+  const [sitrepStatus, setSitrepStatus] = useState<'draft' | 'approved'>("draft");
+  const [conopsStatus, setConopsStatus] = useState<'draft' | 'approved'>("draft");
+  const [sitrepHistory, setSitrepHistory] = useState<any[]>([]);
+  const [conopsHistory, setConopsHistory] = useState<any[]>([]);
+  const [sitrepVersion, setSitrepVersion] = useState(1);
+  const [conopsVersion, setConopsVersion] = useState(1);
+
   // Track manual edits for unsaved changes
   useEffect(() => {
     if (planEdit !== (currentPlan?.content || "")) {
@@ -400,6 +410,21 @@ export default function Home() {
     return "";
   };
 
+  // Approve handlers
+  const approveSitrep = () => {
+    setSitrepStatus("approved");
+    setSitrepHistory([...sitrepHistory, { content: sitrep, version: sitrepVersion, status: "approved", date: new Date().toISOString() }]);
+    setSitrepVersion(sitrepVersion + 1);
+  };
+  const approveConops = () => {
+    setConopsStatus("approved");
+    setConopsHistory([...conopsHistory, { content: conops, version: conopsVersion, status: "approved", date: new Date().toISOString() }]);
+    setConopsVersion(conopsVersion + 1);
+  };
+  // Share handlers (placeholder)
+  const shareSitrep = () => alert("SITREP shared with team (placeholder)");
+  const shareConops = () => alert("CONOPS shared with team (placeholder)");
+
   return (
     <div className="min-h-screen bg-black text-gray-100 font-mono flex flex-col items-center px-4 py-8">
       {/* Header */}
@@ -687,10 +712,101 @@ export default function Home() {
               </div>
             </div>
             {/* SITREP/CONOPS */}
-            <div className="bg-gray-900/80 rounded-xl p-4 shadow border border-gray-800">
-              <h4 className="font-bold text-white mb-2 font-mono tracking-widest">SITREP / CONOPS</h4>
-              <div className="text-xs text-gray-400 italic min-h-[2em] font-mono tracking-widest">
-                {briefs.length > 0 ? briefs.map((b, i) => <div key={i}>{b}</div>) : "Auto-generated briefs will appear here."}
+            <div className="bg-gray-900/80 rounded-xl p-6 mb-6 border border-gray-800">
+              <h2 className="text-lg font-bold mb-2 flex items-center gap-2">SITREP / CONOPS
+                <span className="ml-2 text-xs text-gray-400">(Situation Report & Concept of Operations)</span>
+              </h2>
+              <div className="flex flex-col md:flex-row gap-6">
+                {/* SITREP */}
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="font-semibold">SITREP</span>
+                    <span className={`text-xs px-2 py-0.5 rounded ${sitrepStatus === 'approved' ? 'bg-green-800 text-green-200' : 'bg-yellow-800 text-yellow-200'}`}>{sitrepStatus.toUpperCase()}</span>
+                    <span className="text-xs text-gray-400">v{sitrepVersion}</span>
+                  </div>
+                  <textarea
+                    className="w-full min-h-[120px] bg-gray-800 text-gray-200 rounded px-3 py-2 font-mono text-sm mb-2 resize-vertical focus:outline-none focus:ring-2 focus:ring-blue-700"
+                    value={sitrep}
+                    onChange={e => { setSitrep(e.target.value); setSitrepStatus('draft'); }}
+                    disabled={sitrepStatus === 'approved'}
+                    placeholder="Type or paste the latest SITREP here..."
+                  />
+                  <div className="flex gap-2 mb-2">
+                    <button
+                      className="text-xs px-2 py-1 rounded bg-green-700 hover:bg-green-800 text-white border border-green-900 disabled:opacity-50"
+                      onClick={approveSitrep}
+                      disabled={sitrepStatus === 'approved' || !sitrep.trim()}
+                    >
+                      Approve
+                    </button>
+                    <button
+                      className="text-xs px-2 py-1 rounded bg-blue-700 hover:bg-blue-800 text-white border border-blue-900"
+                      onClick={shareSitrep}
+                      disabled={!sitrep.trim() || sitrepStatus !== 'approved'}
+                    >
+                      Share with team
+                    </button>
+                  </div>
+                  {/* SITREP Version History */}
+                  {sitrepHistory.length > 0 && (
+                    <div className="mt-2 text-xs">
+                      <div className="font-bold mb-1">SITREP History:</div>
+                      <ul className="space-y-1">
+                        {sitrepHistory.map((h, i) => (
+                          <li key={i} className="bg-gray-800 rounded p-2 flex flex-col">
+                            <span className="font-mono text-gray-300">{h.content}</span>
+                            <span className="text-gray-500">v{h.version} • {h.status} • {new Date(h.date).toLocaleString()}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+                {/* CONOPS */}
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="font-semibold">CONOPS</span>
+                    <span className={`text-xs px-2 py-0.5 rounded ${conopsStatus === 'approved' ? 'bg-green-800 text-green-200' : 'bg-yellow-800 text-yellow-200'}`}>{conopsStatus.toUpperCase()}</span>
+                    <span className="text-xs text-gray-400">v{conopsVersion}</span>
+                  </div>
+                  <textarea
+                    className="w-full min-h-[120px] bg-gray-800 text-gray-200 rounded px-3 py-2 font-mono text-sm mb-2 resize-vertical focus:outline-none focus:ring-2 focus:ring-blue-700"
+                    value={conops}
+                    onChange={e => { setConops(e.target.value); setConopsStatus('draft'); }}
+                    disabled={conopsStatus === 'approved'}
+                    placeholder="Type or paste the latest CONOPS here..."
+                  />
+                  <div className="flex gap-2 mb-2">
+                    <button
+                      className="text-xs px-2 py-1 rounded bg-green-700 hover:bg-green-800 text-white border border-green-900 disabled:opacity-50"
+                      onClick={approveConops}
+                      disabled={conopsStatus === 'approved' || !conops.trim()}
+                    >
+                      Approve
+                    </button>
+                    <button
+                      className="text-xs px-2 py-1 rounded bg-blue-700 hover:bg-blue-800 text-white border border-blue-900"
+                      onClick={shareConops}
+                      disabled={!conops.trim() || conopsStatus !== 'approved'}
+                    >
+                      Share with team
+                    </button>
+                  </div>
+                  {/* CONOPS Version History */}
+                  {conopsHistory.length > 0 && (
+                    <div className="mt-2 text-xs">
+                      <div className="font-bold mb-1">CONOPS History:</div>
+                      <ul className="space-y-1">
+                        {conopsHistory.map((h, i) => (
+                          <li key={i} className="bg-gray-800 rounded p-2 flex flex-col">
+                            <span className="font-mono text-gray-300">{h.content}</span>
+                            <span className="text-gray-500">v{h.version} • {h.status} • {new Date(h.date).toLocaleString()}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>
