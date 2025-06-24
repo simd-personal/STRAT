@@ -72,6 +72,11 @@ export default function Home() {
   const [unsaved, setUnsaved] = useState(false);
   const [showUnsavedWarning, setShowUnsavedWarning] = useState(false);
 
+  // Add new state for plan comparison
+  const [compareIdxA, setCompareIdxA] = useState<number | null>(null);
+  const [compareIdxB, setCompareIdxB] = useState<number | null>(null);
+  const [showCompareModal, setShowCompareModal] = useState(false);
+
   // Track manual edits for unsaved changes
   useEffect(() => {
     if (planEdit !== (currentPlan?.content || "")) {
@@ -373,6 +378,28 @@ export default function Home() {
     setPlanLoading(false);
   };
 
+  // Clear session handler
+  const clearSession = async () => {
+    setCurrentPlan(null);
+    setPlanEdit("");
+    setPlanHistory([]);
+    setMasterPlan(null);
+    setPlanPrompt("");
+    setRefinePrompt("");
+    setUnsaved(false);
+    localStorage.removeItem("stratos_unsaved_plan");
+    // Optionally, call backend endpoints to clear session data if needed
+    // await fetch("http://localhost:8000/api/plan/clear", { method: "POST" });
+  };
+
+  // Helper to get plan content by index (from history or current)
+  const getPlanByIdx = (idx: number | null) => {
+    if (idx === null) return "";
+    if (idx === -1 && currentPlan) return currentPlan.content;
+    if (planHistory[idx]) return planHistory[idx].content;
+    return "";
+  };
+
   return (
     <div className="min-h-screen bg-black text-gray-100 font-mono flex flex-col items-center px-4 py-8">
       {/* Header */}
@@ -417,7 +444,14 @@ export default function Home() {
           </div>
 
           {/* Mission Planning (Natural Language) */}
-          <div className="bg-gray-900/80 rounded-xl p-6 shadow-lg border border-gray-800">
+          <div className="bg-gray-900/80 rounded-xl p-6 shadow-lg border border-gray-800 relative">
+            <button
+              className="absolute top-4 right-4 bg-red-800 hover:bg-red-900 text-xs text-white px-2 py-1 rounded font-mono border border-gray-700 z-10"
+              onClick={clearSession}
+              title="Clear session (reset all mission planning data)"
+            >
+              Clear Session
+            </button>
             <h3 className="text-lg font-bold mb-2 text-white font-mono tracking-widest">Mission Planning</h3>
             <input
               type="text"
@@ -457,7 +491,7 @@ export default function Home() {
                 </button>
               </div>
               <textarea
-                className="w-full min-h-[120px] bg-gray-800 text-gray-200 rounded px-3 py-2 font-mono tracking-widest mb-2"
+                className="w-full min-h-[300px] bg-gray-800 text-gray-200 rounded px-4 py-3 font-mono tracking-widest mb-2 text-base leading-relaxed resize-vertical focus:outline-none focus:ring-2 focus:ring-blue-700"
                 value={planEdit}
                 onChange={e => setPlanEdit(e.target.value)}
                 disabled={planLoading}
@@ -567,6 +601,17 @@ export default function Home() {
                   </div>
                 )}
               </div>
+              {/* Plan Comparison Button */}
+              <div className="flex gap-2 items-center mb-2">
+                <button
+                  className="text-xs px-2 py-1 rounded bg-gray-700 hover:bg-blue-700 text-white border border-gray-600"
+                  onClick={() => setShowCompareModal(true)}
+                  disabled={planHistory.length < 2 && !currentPlan}
+                  title="Compare two plans side by side"
+                >
+                  Compare Plans
+                </button>
+              </div>
             </div>
           </div>
         </section>
@@ -659,6 +704,79 @@ export default function Home() {
           <span className="w-4 h-4 bg-red-700 rounded-full shadow transform translate-x-1"></span>
         </button>
       </div>
+
+      {/* Plan Comparison Modal */}
+      {showCompareModal && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 overflow-auto">
+          <div className="bg-gray-900 rounded-xl p-6 max-w-5xl w-full shadow-lg border border-gray-800 relative flex flex-col gap-4 max-h-[90vh] overflow-auto">
+            <button
+              className="absolute top-2 right-2 text-gray-400 hover:text-white text-2xl"
+              onClick={() => setShowCompareModal(false)}
+              title="Close"
+            >
+              ×
+            </button>
+            <h2 className="text-lg font-bold mb-2 text-center">Compare Mission Plans</h2>
+            <div className="flex gap-4 mb-2 overflow-x-auto max-w-full">
+              <div className="flex-1 min-w-[320px] max-w-[50vw]">
+                <label className="block text-xs mb-1">Plan A</label>
+                <select
+                  className="w-full bg-gray-800 text-gray-200 rounded px-2 py-1 mb-2"
+                  value={compareIdxA ?? -1}
+                  onChange={e => setCompareIdxA(Number(e.target.value))}
+                >
+                  <option value={-1}>Current Plan</option>
+                  {planHistory.map((plan, idx) => (
+                    <option key={idx} value={idx}>Archived {plan.updated_at ? `(${plan.updated_at})` : `#${idx+1}`}</option>
+                  ))}
+                </select>
+                <div className="bg-gray-800 rounded p-3 min-h-[200px] max-h-[400px] overflow-auto text-sm break-words overflow-wrap break-word whitespace-pre-line">
+                  <ReactMarkdown>{getPlanByIdx(compareIdxA)}</ReactMarkdown>
+                </div>
+              </div>
+              <div className="flex-1 min-w-[320px] max-w-[50vw]">
+                <label className="block text-xs mb-1">Plan B</label>
+                <select
+                  className="w-full bg-gray-800 text-gray-200 rounded px-2 py-1 mb-2"
+                  value={compareIdxB ?? (planHistory.length > 0 ? 0 : -1)}
+                  onChange={e => setCompareIdxB(Number(e.target.value))}
+                >
+                  <option value={-1}>Current Plan</option>
+                  {planHistory.map((plan, idx) => (
+                    <option key={idx} value={idx}>Archived {plan.updated_at ? `(${plan.updated_at})` : `#${idx+1}`}</option>
+                  ))}
+                </select>
+                <div className="bg-gray-800 rounded p-3 min-h-[200px] max-h-[400px] overflow-auto text-sm break-words overflow-wrap break-word whitespace-pre-line">
+                  <ReactMarkdown>{getPlanByIdx(compareIdxB)}</ReactMarkdown>
+                </div>
+              </div>
+            </div>
+            {/* Optional: Add a simple diff view below (textual diff, highlight lines that differ) */}
+            {compareIdxA !== null && compareIdxB !== null && (
+              <div className="mt-2 flex flex-col md:flex-row gap-4 text-xs overflow-x-auto">
+                <div className="flex-1 bg-gray-950 rounded p-2 overflow-auto min-w-[200px] max-w-[50vw] break-words overflow-wrap break-word whitespace-pre-line">
+                  <span className="font-bold">Plan A only:</span>
+                  <ul className="list-disc ml-4">
+                    {getPlanByIdx(compareIdxA)
+                      .split('\n')
+                      .filter((line: string) => !getPlanByIdx(compareIdxB).split('\n').includes(line) && line.trim() !== "")
+                      .map((line: string, i: number) => <li key={i} className="text-red-400">{line}</li>)}
+                  </ul>
+                </div>
+                <div className="flex-1 bg-gray-950 rounded p-2 overflow-auto min-w-[200px] max-w-[50vw] break-words overflow-wrap break-word whitespace-pre-line">
+                  <span className="font-bold">Plan B only:</span>
+                  <ul className="list-disc ml-4">
+                    {getPlanByIdx(compareIdxB)
+                      .split('\n')
+                      .filter((line: string) => !getPlanByIdx(compareIdxA).split('\n').includes(line) && line.trim() !== "")
+                      .map((line: string, i: number) => <li key={i} className="text-green-400">{line}</li>)}
+                  </ul>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
