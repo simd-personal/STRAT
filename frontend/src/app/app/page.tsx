@@ -7,6 +7,7 @@ import ReactMarkdown from "react-markdown";
 import Link from "next/link";
 import HoverSidebar from "../components/HoverSidebar";
 import { notify } from '../components/notify';
+import GoogleOpsMap from '../components/GoogleOpsMap';
 
 const Map = dynamic(() => import("react-map-gl/mapbox").then(mod => mod.Map), { ssr: false });
 const Marker = dynamic(() => import("react-map-gl/mapbox").then(mod => mod.Marker), { ssr: false });
@@ -121,6 +122,38 @@ export default function Home() {
   const [aarLoading, setAarLoading] = useState(false);
   const [aarError, setAarError] = useState<string | null>(null);
 
+  // Incident Management state
+  const [incidents, setIncidents] = useState<any[]>([]);
+  const [selectedIncident, setSelectedIncident] = useState<any>(null);
+  const [showIncidentModal, setShowIncidentModal] = useState(false);
+  const [showDispatchModal, setShowDispatchModal] = useState(false);
+  const [dispatchUnit, setDispatchUnit] = useState("");
+  const availableUnits = [
+    "Alpha-1", "Alpha-2", "Bravo-1", "Bravo-2", 
+    "Charlie-1", "Delta-1", "Echo-1", "Foxtrot-1"
+  ];
+
+  // Add state for units
+  const [units, setUnits] = useState<any[]>([]);
+
+  // Fetch units from /api/assets
+  useEffect(() => {
+    const fetchUnits = async () => {
+      try {
+        const response = await fetch('http://localhost:8000/api/assets');
+        const data = await response.json();
+        // Convert asset object to array with id
+        const arr = Object.entries(data.assets || {}).map(([id, asset]) => ({ ...asset, id }));
+        setUnits(arr);
+      } catch (error) {
+        console.error('Failed to fetch units:', error);
+      }
+    };
+    fetchUnits();
+    const interval = setInterval(fetchUnits, 5000);
+    return () => clearInterval(interval);
+  }, []);
+
   // Disable controls if simulation is completed or stalled
   const controlsDisabled = simulationStatus === 'completed' || simulationStatus === 'stalled';
 
@@ -189,6 +222,23 @@ export default function Home() {
     });
     fetch("http://localhost:8000/api/plan/history").then(res => res.json()).then(data => setPlanHistory(data.history || []));
     fetch("http://localhost:8000/api/plan/master").then(res => res.json()).then(data => setMasterPlan(data.master));
+  }, []);
+
+  // Fetch incidents on mount and poll for updates
+  useEffect(() => {
+    const fetchIncidents = async () => {
+      try {
+        const response = await fetch(`${BACKEND_URL}/api/incidents`);
+        const data = await response.json();
+        setIncidents(data.incidents || []);
+      } catch (error) {
+        console.error("Failed to fetch incidents:", error);
+      }
+    };
+    
+    fetchIncidents();
+    const interval = setInterval(fetchIncidents, 5000); // Poll every 5 seconds
+    return () => clearInterval(interval);
   }, []);
 
   // Handle PDF upload
@@ -708,6 +758,73 @@ export default function Home() {
     }
   };
 
+  // Incident Management Functions
+  const handleIncidentClick = (incident: any) => {
+    setSelectedIncident(incident);
+    setShowIncidentModal(true);
+  };
+
+  const handleDispatchUnit = async () => {
+    if (!selectedIncident || !dispatchUnit) return;
+    
+    try {
+      const response = await fetch(`${BACKEND_URL}/api/dispatch`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          incident_id: selectedIncident.incident_id,
+          unit_id: dispatchUnit
+        })
+      });
+      
+      if (response.ok) {
+        notify.success(`Unit ${dispatchUnit} dispatched to incident`);
+        setShowDispatchModal(false);
+        setSelectedIncident(null);
+        setDispatchUnit("");
+        // Refresh incidents
+        const res = await fetch(`${BACKEND_URL}/api/incidents`);
+        const data = await res.json();
+        setIncidents(data.incidents || []);
+      } else {
+        notify.error("Failed to dispatch unit");
+      }
+    } catch (error) {
+      notify.error("Failed to dispatch unit");
+    }
+  };
+
+  const handleResolveIncident = async (incidentId: string) => {
+    try {
+      const response = await fetch(`${BACKEND_URL}/api/incidents/${incidentId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: "resolved" })
+      });
+      
+      if (response.ok) {
+        notify.success("Incident resolved");
+        // Refresh incidents
+        const res = await fetch(`${BACKEND_URL}/api/incidents`);
+        const data = await res.json();
+        setIncidents(data.incidents || []);
+      } else {
+        notify.error("Failed to resolve incident");
+      }
+    } catch (error) {
+      notify.error("Failed to resolve incident");
+    }
+  };
+
+  const getIncidentColor = (status: string) => {
+    switch (status) {
+      case "new": return "#3B82F6"; // blue
+      case "dispatched": return "#F59E0B"; // yellow
+      case "resolved": return "#10B981"; // green
+      default: return "#6B7280"; // gray
+    }
+  };
+
   return (
     <div className="min-h-screen bg-black text-gray-100 font-mono flex flex-col items-center px-4 py-8">
       {/* Header */}
@@ -949,23 +1066,7 @@ export default function Home() {
               <h3 className="text-lg font-bold mb-2 text-white font-mono tracking-widest">Operational Map</h3>
               <div className="flex-1 flex items-center justify-center text-gray-500 italic border-2 border-dashed border-gray-700 rounded-lg">
                 <div className="w-full h-full" style={{ minHeight: 200 }}>
-                  <Map
-                    viewState={viewState}
-                    onMove={evt => setViewState(evt.viewState)}
-                    style={{ width: "100%", height: "200px", borderRadius: "0.5rem" }}
-                    mapStyle="mapbox://styles/mapbox/satellite-streets-v12"
-                    mapboxAccessToken={MAPBOX_TOKEN}
-                  >
-                    {mapCoords && (
-                      <Marker longitude={mapCoords.lng} latitude={mapCoords.lat} anchor="bottom">
-                        <svg width="24" height="32" viewBox="0 0 24 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-                          <ellipse cx="12" cy="10" rx="8" ry="8" fill="#38bdf8" fillOpacity="0.95"/>
-                          <rect x="10" y="10" width="4" height="14" rx="2" fill="#38bdf8" fillOpacity="0.95"/>
-                          <ellipse cx="12" cy="10" rx="3" ry="3" fill="#fff"/>
-                        </svg>
-                      </Marker>
-                    )}
-                  </Map>
+                  <GoogleOpsMap units={units} incidents={incidents} />
                 </div>
               </div>
             </div>
@@ -1413,6 +1514,134 @@ export default function Home() {
             ) : (
               <div className="text-gray-400 font-mono">No report available.</div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Incident Details Modal */}
+      {showIncidentModal && selectedIncident && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+          <div className="bg-gray-900 rounded-xl p-6 max-w-md w-full shadow-lg border border-gray-800 relative">
+            <button
+              className="absolute top-2 right-2 text-gray-400 hover:text-white text-2xl"
+              onClick={() => setShowIncidentModal(false)}
+              title="Close"
+            >
+              ×
+            </button>
+            <h2 className="text-lg font-bold mb-4 text-white">Incident Details</h2>
+            <div className="space-y-4">
+              <div>
+                <label className="text-gray-400 text-sm">Type</label>
+                <div className="text-white font-semibold">{selectedIncident.type}</div>
+              </div>
+              <div>
+                <label className="text-gray-400 text-sm">Priority</label>
+                <div className="text-white font-semibold capitalize">{selectedIncident.priority}</div>
+              </div>
+              <div>
+                <label className="text-gray-400 text-sm">Status</label>
+                <div className="text-white font-semibold capitalize">{selectedIncident.status}</div>
+              </div>
+              <div>
+                <label className="text-gray-400 text-sm">Location</label>
+                <div className="text-white font-mono text-sm">
+                  {selectedIncident.location.lat.toFixed(4)}, {selectedIncident.location.lng.toFixed(4)}
+                </div>
+              </div>
+              <div>
+                <label className="text-gray-400 text-sm">Description</label>
+                <div className="text-white">{selectedIncident.description || "No description"}</div>
+              </div>
+              <div>
+                <label className="text-gray-400 text-sm">Created</label>
+                <div className="text-white text-sm">
+                  {new Date(selectedIncident.created_at).toLocaleString()}
+                </div>
+              </div>
+              {selectedIncident.assigned_units && selectedIncident.assigned_units.length > 0 && (
+                <div>
+                  <label className="text-gray-400 text-sm">Assigned Units</label>
+                  <div className="text-white text-sm">
+                    {selectedIncident.assigned_units.join(", ")}
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="flex gap-2 mt-6">
+              {selectedIncident.status !== "resolved" && (
+                <>
+                  <button
+                    onClick={() => {
+                      setShowIncidentModal(false);
+                      setShowDispatchModal(true);
+                    }}
+                    className="flex-1 bg-blue-800 hover:bg-blue-900 text-white px-4 py-2 rounded font-mono text-sm"
+                  >
+                    Dispatch Unit
+                  </button>
+                  <button
+                    onClick={() => {
+                      handleResolveIncident(selectedIncident.incident_id);
+                      setShowIncidentModal(false);
+                    }}
+                    className="flex-1 bg-green-800 hover:bg-green-900 text-white px-4 py-2 rounded font-mono text-sm"
+                  >
+                    Resolve
+                  </button>
+                </>
+              )}
+              <button
+                onClick={() => setShowIncidentModal(false)}
+                className="flex-1 bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded font-mono text-sm"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Dispatch Modal */}
+      {showDispatchModal && selectedIncident && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+          <div className="bg-gray-900 rounded-xl p-6 max-w-md w-full shadow-lg border border-gray-800 relative">
+            <button
+              className="absolute top-2 right-2 text-gray-400 hover:text-white text-2xl"
+              onClick={() => setShowDispatchModal(false)}
+              title="Close"
+            >
+              ×
+            </button>
+            <h2 className="text-lg font-bold mb-4 text-white">Dispatch Unit</h2>
+            <p className="text-gray-400 text-sm mb-4">
+              Assign a unit to incident: {selectedIncident.type}
+            </p>
+            <select
+              value={dispatchUnit}
+              onChange={(e) => setDispatchUnit(e.target.value)}
+              className="w-full bg-gray-800 text-gray-200 rounded px-4 py-2 mb-4 border border-gray-700"
+            >
+              <option value="">Select Unit</option>
+              {availableUnits.map(unit => (
+                <option key={unit} value={unit}>{unit}</option>
+              ))}
+            </select>
+            <div className="flex gap-2">
+              <button
+                onClick={handleDispatchUnit}
+                disabled={!dispatchUnit}
+                className="flex-1 bg-blue-800 hover:bg-blue-900 text-white px-4 py-2 rounded font-mono text-sm disabled:opacity-50"
+              >
+                Dispatch
+              </button>
+              <button
+                onClick={() => setShowDispatchModal(false)}
+                className="flex-1 bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded font-mono text-sm"
+              >
+                Cancel
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -9,11 +9,17 @@ export default function GoogleOpsMap({
   incidents,
   center = defaultCenter,
   zoom = defaultZoom,
+  selectedIncidentId,
+  onIncidentMarkerClick,
+  onMapClick,
 }: {
   units: any[];
   incidents: any[];
   center?: { lat: number; lng: number };
   zoom?: number;
+  selectedIncidentId?: string;
+  onIncidentMarkerClick?: (incident: any) => void;
+  onMapClick?: (e: google.maps.MapMouseEvent) => void;
 }) {
   const { isLoaded } = useJsApiLoader({
     googleMapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY!,
@@ -22,7 +28,19 @@ export default function GoogleOpsMap({
   if (!isLoaded) return <div>Loading Map...</div>;
 
   return (
-    <GoogleMap mapContainerStyle={containerStyle} center={center} zoom={zoom}>
+    <GoogleMap
+      mapContainerStyle={{ ...containerStyle, maxWidth: '100vw', maxHeight: '60vh' }}
+      center={center}
+      zoom={zoom}
+      onClick={onMapClick}
+      options={{
+        gestureHandling: 'greedy',
+        mapTypeControl: false,
+        streetViewControl: false,
+        fullscreenControl: false,
+      }}
+      // Accessibility: consider wrapping in a focusable div if keyboard navigation is needed
+    >
       {units.map((unit, idx) => (
         <Marker
           key={unit.id || unit.asset_id || idx}
@@ -44,9 +62,13 @@ export default function GoogleOpsMap({
           key={incident.incident_id}
           position={incident.location}
           icon={{
-            url: incident.type === 'Hazard' ? '/hazard-icon.svg' : '/incident-icon.svg',
-            scaledSize: typeof window !== 'undefined' && window.google ? new window.google.maps.Size(32, 32) : undefined,
+            url:
+              incident.incident_id === selectedIncidentId
+                ? (incident.type === 'Hazard' ? '/hazard-icon-pulse.svg' : '/incident-icon-pulse.svg')
+                : (incident.type === 'Hazard' ? '/hazard-icon.svg' : '/incident-icon.svg'),
+            scaledSize: typeof window !== 'undefined' && window.google ? new window.google.maps.Size(36, 36) : undefined,
           }}
+          onClick={() => onIncidentMarkerClick && onIncidentMarkerClick(incident)}
         />
       ))}
     </GoogleMap>

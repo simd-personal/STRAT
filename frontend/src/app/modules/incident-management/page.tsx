@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { notify } from "../../components/notify";
 import GoogleOpsMap from '../../components/GoogleOpsMap';
+import { GoogleMap, Marker, useJsApiLoader } from '@react-google-maps/api';
 
 interface Incident {
   incident_id: string;
@@ -38,6 +39,10 @@ export default function IncidentManagement() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showDispatchModal, setShowDispatchModal] = useState(false);
   const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null);
+  const [selectedIncidentId, setSelectedIncidentId] = useState<string | null>(null);
+  const [mapCenter, setMapCenter] = useState<{ lat: number; lng: number }>({ lat: 33.6411, lng: -117.9187 });
+  const [mapZoom, setMapZoom] = useState(14);
+  const mapRef = useRef<any>(null);
   
   // Form states
   const [newIncident, setNewIncident] = useState({
@@ -53,6 +58,14 @@ export default function IncidentManagement() {
     "Alpha-1", "Alpha-2", "Bravo-1", "Bravo-2", 
     "Charlie-1", "Delta-1", "Echo-1", "Foxtrot-1"
   ];
+
+  const [modalIncidentLocation, setModalIncidentLocation] = useState({ lat: 33.6411, lng: -117.9187 });
+
+  // Undo/cancel after creation
+  const [lastCreatedIncidentId, setLastCreatedIncidentId] = useState<string | null>(null);
+
+  // Accessibility: focus modal on open
+  const modalRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     fetchIncidents();
@@ -84,6 +97,19 @@ export default function IncidentManagement() {
         setShowCreateModal(false);
         setNewIncident({ type: "", priority: "medium", location: { lat: 39.8283, lng: -98.5795 }, description: "" });
         fetchIncidents();
+        // Highlight and pan to new incident
+        const data = await response.json();
+        const newId = data.incident_id || (data.incident && data.incident.incident_id);
+        if (newId) {
+          setSelectedIncidentId(newId);
+          const incident = incidents.find(i => i.incident_id === newId);
+          if (incident) {
+            setMapCenter(incident.location);
+            setMapZoom(16);
+          }
+        }
+        setLastCreatedIncidentId(data.incident_id);
+        notify.success('Incident created. You can undo this action below.');
       } else {
         notify.error("Failed to create incident");
       }
@@ -165,6 +191,46 @@ export default function IncidentManagement() {
     }
   };
 
+  // Table row click handler
+  const handleRowClick = (incident: Incident) => {
+    setSelectedIncidentId(incident.incident_id);
+    setMapCenter(incident.location);
+    setMapZoom(16);
+  };
+
+  // Marker click handler
+  const handleIncidentMarkerClick = (incident: Incident) => {
+    setSelectedIncidentId(incident.incident_id);
+    setMapCenter(incident.location);
+    setMapZoom(16);
+  };
+
+  const handleMapClick = (e: google.maps.MapMouseEvent) => {
+    if (!showCreateModal && e.latLng) {
+      setModalIncidentLocation({ lat: e.latLng.lat(), lng: e.latLng.lng() });
+      setNewIncident({ ...newIncident, location: { lat: e.latLng.lat(), lng: e.latLng.lng() } });
+      setShowCreateModal(true);
+      notify.info('Creating incident at selected location');
+    }
+  };
+
+  // Undo/cancel after creation
+  const handleUndoCreate = async () => {
+    if (lastCreatedIncidentId) {
+      await fetch(`${BACKEND_URL}/api/incidents/${lastCreatedIncidentId}`, { method: 'DELETE' });
+      setLastCreatedIncidentId(null);
+      fetchIncidents();
+      notify.success('Incident creation undone');
+    }
+  };
+
+  // Accessibility: focus modal on open
+  useEffect(() => {
+    if (showCreateModal && modalRef.current) {
+      modalRef.current.focus();
+    }
+  }, [showCreateModal]);
+
   return (
     <div className="min-h-screen bg-[#181A1B] text-[#F3F3E7] font-sans">
       {/* Header */}
@@ -193,9 +259,12 @@ export default function IncidentManagement() {
         <div style={{ width: '500px', height: '300px', borderRadius: '16px', overflow: 'hidden', boxShadow: '0 2px 12px #0006' }}>
           <GoogleOpsMap
             units={TEST_UNITS}
-            incidents={TEST_INCIDENTS}
-            center={{ lat: 33.6411, lng: -117.9187 }}
-            zoom={14}
+            incidents={incidents}
+            center={mapCenter}
+            zoom={mapZoom}
+            selectedIncidentId={selectedIncidentId ?? undefined}
+            onIncidentMarkerClick={handleIncidentMarkerClick}
+            onMapClick={handleMapClick}
           />
         </div>
       </div>
@@ -258,7 +327,7 @@ export default function IncidentManagement() {
                   </tr>
                 ) : (
                   filteredIncidents.map((incident) => (
-                    <tr key={incident.incident_id} className="border-b border-[#181A1B] hover:bg-[#181A1B]/50">
+                    <tr key={incident.incident_id} className={`border-b border-[#181A1B] hover:bg-[#181A1B]/50 ${selectedIncidentId === incident.incident_id ? 'bg-yellow-900/20' : ''}`} onClick={() => handleRowClick(incident)}>
                       <td className="px-6 py-4 text-sm font-mono text-[#F3F3E7]">
                         {incident.incident_id.slice(0, 8)}...
                       </td>
@@ -287,7 +356,8 @@ export default function IncidentManagement() {
                           {incident.status !== "resolved" && (
                             <>
                               <button
-                                onClick={() => {
+                                onClick={(e) => {
+                                  e.stopPropagation();
                                   setSelectedIncident(incident);
                                   setShowDispatchModal(true);
                                 }}
@@ -296,7 +366,10 @@ export default function IncidentManagement() {
                                 Dispatch
                               </button>
                               <button
-                                onClick={() => resolveIncident(incident.incident_id)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  resolveIncident(incident.incident_id);
+                                }}
                                 className="px-3 py-1 bg-green-600 text-white rounded text-xs font-semibold hover:bg-green-700 transition-colors"
                               >
                                 Resolve
@@ -317,25 +390,80 @@ export default function IncidentManagement() {
       {/* Create Incident Modal */}
       {showCreateModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-[#23272f] rounded-2xl border border-[#A3B18A] p-6 w-full max-w-md">
+          <div
+            ref={modalRef}
+            tabIndex={-1}
+            aria-modal="true"
+            role="dialog"
+            aria-label="Create Incident Modal"
+            className="bg-[#23272f] rounded-2xl border border-[#A3B18A] p-6 w-full max-w-md focus:outline-none"
+          >
             <h2 className="text-xl font-bold text-[#F3F3E7] mb-4">Create New Incident</h2>
             <div className="space-y-4">
-              <input
-                type="text"
-                placeholder="Incident Type"
-                value={newIncident.type}
-                onChange={(e) => setNewIncident({...newIncident, type: e.target.value})}
-                className="w-full px-4 py-2 bg-[#181A1B] border border-[#A3B18A] rounded-lg text-[#F3F3E7]"
-              />
-              <select
-                value={newIncident.priority}
-                onChange={(e) => setNewIncident({...newIncident, priority: e.target.value})}
-                className="w-full px-4 py-2 bg-[#181A1B] border border-[#A3B18A] rounded-lg text-[#F3F3E7]"
-              >
-                <option value="low">Low Priority</option>
-                <option value="medium">Medium Priority</option>
-                <option value="high">High Priority</option>
-              </select>
+              {/* Incident Type and Icon Preview */}
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  placeholder="Incident Type (e.g. Hazard, Shooting)"
+                  value={newIncident.type}
+                  onChange={(e) => setNewIncident({...newIncident, type: e.target.value})}
+                  className="flex-1 px-4 py-2 bg-[#181A1B] border border-[#A3B18A] rounded-lg text-[#F3F3E7]"
+                />
+                {/* Icon preview for type */}
+                {newIncident.type && (
+                  <img
+                    src={newIncident.type.toLowerCase() === 'hazard' ? '/hazard-icon.svg' : '/incident-icon.svg'}
+                    alt="Incident Icon Preview"
+                    className="w-8 h-8"
+                  />
+                )}
+              </div>
+              {/* Priority 1-4 Dropdown */}
+              <div>
+                <select
+                  value={newIncident.priority}
+                  onChange={(e) => setNewIncident({...newIncident, priority: e.target.value})}
+                  className="w-full px-4 py-2 bg-[#181A1B] border border-[#A3B18A] rounded-lg text-[#F3F3E7]"
+                >
+                  <option value="1">Priority 1 (Critical - e.g. Shooting)</option>
+                  <option value="2">Priority 2 (High - e.g. Major Accident)</option>
+                  <option value="3">Priority 3 (Moderate - e.g. Disturbance)</option>
+                  <option value="4">Priority 4 (Minor - e.g. Traffic Stop)</option>
+                </select>
+                <div className="text-xs text-[#A3B18A] mt-1">1 = Highest, 4 = Lowest</div>
+              </div>
+              {/* Map Picker for Location */}
+              <div>
+                <div className="mb-2 text-xs text-[#A3B18A]">Pick location:</div>
+                <div style={{ width: '100%', height: '180px', borderRadius: '8px', overflow: 'hidden' }}>
+                  <GoogleMap
+                    mapContainerStyle={{ width: '100%', height: '180px' }}
+                    center={modalIncidentLocation}
+                    zoom={15}
+                    onClick={e => {
+                      if (e.latLng) {
+                        const lat = e.latLng.lat();
+                        const lng = e.latLng.lng();
+                        setModalIncidentLocation({ lat, lng });
+                        setNewIncident({ ...newIncident, location: { lat, lng } });
+                      }
+                    }}
+                  >
+                    <Marker
+                      position={modalIncidentLocation}
+                      draggable={true}
+                      onDragEnd={e => {
+                        if (e.latLng) {
+                          const lat = e.latLng.lat();
+                          const lng = e.latLng.lng();
+                          setModalIncidentLocation({ lat, lng });
+                          setNewIncident({ ...newIncident, location: { lat, lng } });
+                        }
+                      }}
+                    />
+                  </GoogleMap>
+                </div>
+              </div>
               <textarea
                 placeholder="Description"
                 value={newIncident.description}
@@ -395,6 +523,13 @@ export default function IncidentManagement() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* After the table or map, show Undo button if lastCreatedIncidentId is set */}
+      {lastCreatedIncidentId && (
+        <div className="mt-2 text-center">
+          <button onClick={handleUndoCreate} className="underline text-red-400">Undo Last Incident Creation</button>
         </div>
       )}
     </div>

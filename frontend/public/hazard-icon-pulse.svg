@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48">
+  <g>
+    <circle cx="24" cy="32" r="18" fill="#FFD600" opacity="0.3">
+      <animate attributeName="r" values="18;24;18" dur="1.2s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0.3;0.1;0.3" dur="1.2s" repeatCount="indefinite"/>
+    </circle>
+    <polygon points="24,4 44,42 4,42" fill="#FFD600" stroke="#B71C1C" stroke-width="3"/>
+    <rect x="21" y="16" width="6" height="14" rx="3" fill="#B71C1C"/>
+    <circle cx="24" cy="36" r="3" fill="#B71C1C"/>
+  </g>
+</svg> 

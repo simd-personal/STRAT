@@ -81,6 +81,7 @@ export default function HoverSidebar() {
   };
 
   const sidebarLinks = [
+    { href: "/modules/incident-management", label: "Incident Management" },
     { href: "/modules/route-optimization", label: "Route Optimization" },
     { href: "/modules/asset-allocation", label: "Asset Allocation" },
     { href: "/modules/contingency-plan", label: "Contingency Plan Generator" },
