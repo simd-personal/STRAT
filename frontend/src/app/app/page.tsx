@@ -6,6 +6,7 @@ import dynamic from "next/dynamic";
 import ReactMarkdown from "react-markdown";
 import Link from "next/link";
 import HoverSidebar from "../components/HoverSidebar";
+import { notify } from '../components/notify';
 
 const Map = dynamic(() => import("react-map-gl/mapbox").then(mod => mod.Map), { ssr: false });
 const Marker = dynamic(() => import("react-map-gl/mapbox").then(mod => mod.Marker), { ssr: false });
@@ -28,6 +29,8 @@ const EVENT_TYPE_COLORS = {
   User: "bg-gray-700",
   System: "bg-red-700",
 };
+
+const BACKEND_URL = 'http://localhost:8000';
 
 export default function Home() {
   // State for PDF upload/summary
@@ -455,7 +458,7 @@ export default function Home() {
   // Simulation API functions
   const fetchSimulationStatus = async () => {
     try {
-      const response = await fetch('http://localhost:8000/api/simulation/status');
+      const response = await fetch(`${BACKEND_URL}/api/simulation/status`);
       const data = await response.json();
       setSimulationStatus(data.status);
       setSimulationTime(data.current_time);
@@ -471,7 +474,7 @@ export default function Home() {
 
   const startSimulation = async () => {
     try {
-      const response = await fetch('http://localhost:8000/api/simulation/start', { method: 'POST' });
+      const response = await fetch(`${BACKEND_URL}/api/simulation/start`, { method: 'POST' });
       const data = await response.json();
       if (data.status === 'success') {
         setSimulationStatus('running');
@@ -483,75 +486,94 @@ export default function Home() {
   };
 
   const startRealTimeSimulation = async () => {
+    notify.info('Starting real-time simulation...');
     try {
-      const response = await fetch('http://localhost:8000/api/simulation/start-realtime', { method: 'POST' });
+      const response = await fetch(`${BACKEND_URL}/api/simulation/start-realtime`, { method: 'POST' });
       const data = await response.json();
       if (data.status === 'success') {
         setSimulationStatus('running');
+        notify.success('Real-time simulation started');
         logUserAction("Simulation", "Real-time mission simulation started");
+      } else {
+        notify.error('Failed to start real-time simulation');
       }
     } catch (error) {
-      console.error('Error starting real-time simulation:', error);
+      notify.error('Error starting real-time simulation');
     }
   };
 
   const pauseSimulation = async () => {
+    notify.info('Pausing simulation...');
     try {
-      const response = await fetch('http://localhost:8000/api/simulation/pause', { method: 'POST' });
+      const response = await fetch(`${BACKEND_URL}/api/simulation/pause`, { method: 'POST' });
       const data = await response.json();
       if (data.status === 'success') {
         setSimulationStatus('paused');
+        notify.success('Simulation paused');
         logUserAction("Simulation", "Simulation paused");
+      } else {
+        notify.error('Failed to pause simulation');
       }
     } catch (error) {
-      console.error('Error pausing simulation:', error);
+      notify.error('Error pausing simulation');
     }
   };
 
   const resumeSimulation = async () => {
+    notify.info('Resuming simulation...');
     try {
-      const response = await fetch('http://localhost:8000/api/simulation/resume', { method: 'POST' });
+      const response = await fetch(`${BACKEND_URL}/api/simulation/resume`, { method: 'POST' });
       const data = await response.json();
       if (data.status === 'success') {
         setSimulationStatus('running');
+        notify.success('Simulation resumed');
         logUserAction("Simulation", "Simulation resumed");
+      } else {
+        notify.error('Failed to resume simulation');
       }
     } catch (error) {
-      console.error('Error resuming simulation:', error);
+      notify.error('Error resuming simulation');
     }
   };
 
   const stopSimulation = async () => {
+    notify.info('Stopping simulation...');
     try {
-      const response = await fetch('http://localhost:8000/api/simulation/stop', { method: 'POST' });
+      const response = await fetch(`${BACKEND_URL}/api/simulation/stop`, { method: 'POST' });
       const data = await response.json();
       if (data.status === 'success') {
         setSimulationStatus('idle');
+        notify.success('Simulation stopped');
         logUserAction("Simulation", "Simulation stopped");
+      } else {
+        notify.error('Failed to stop simulation');
       }
     } catch (error) {
-      console.error('Error stopping simulation:', error);
+      notify.error('Error stopping simulation');
     }
   };
 
   const stepSimulation = async () => {
+    notify.info('Stepping simulation...');
     try {
-      const response = await fetch('http://localhost:8000/api/simulation/step', { method: 'POST' });
+      const response = await fetch(`${BACKEND_URL}/api/simulation/step`, { method: 'POST' });
       const data = await response.json();
       if (data.status === 'success') {
         await fetchSimulationStatus();
+        notify.success('Simulation step executed');
         logUserAction("Simulation", "Simulation step executed");
+      } else {
+        notify.error('Failed to step simulation');
       }
     } catch (error) {
-      console.error('Error stepping simulation:', error);
+      notify.error('Error stepping simulation');
     }
   };
 
   const injectEvent = async () => {
     if (!injectEventDescription.trim()) return;
-    
     try {
-      const response = await fetch('http://localhost:8000/api/simulation/inject', {
+      const response = await fetch(`${BACKEND_URL}/api/simulation/inject`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ description: injectEventDescription })
@@ -564,13 +586,13 @@ export default function Home() {
         logUserAction("Simulation", `Event injected: ${injectEventDescription}`);
       }
     } catch (error) {
-      console.error('Error injecting event:', error);
+      notify.error('Error injecting event');
     }
   };
 
   const updateSimulationSpeed = async (speed: number) => {
     try {
-      const response = await fetch('http://localhost:8000/api/simulation/set-speed', {
+      const response = await fetch(`${BACKEND_URL}/api/simulation/set-speed`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ speed })
@@ -581,7 +603,7 @@ export default function Home() {
         logUserAction("Simulation", `Simulation speed set to ${speed} seconds`);
       }
     } catch (error) {
-      console.error('Error setting simulation speed:', error);
+      notify.error('Error setting simulation speed');
     }
   };
 
@@ -620,12 +642,18 @@ export default function Home() {
   // Start fast simulation
   const startFastSimulation = async () => {
     setSimulationStarting(true);
+    notify.info('Starting simulation...');
     try {
-      const res = await fetch("/api/simulation/start-fast", { method: "POST" });
+      const res = await fetch(`${BACKEND_URL}/api/simulation/start-fast`, { method: "POST" });
       const data = await res.json();
       if (data.status === "success") {
         setSimulationStatus("running");
+        notify.success('Simulation started');
+      } else {
+        notify.error('Failed to start simulation');
       }
+    } catch (err) {
+      notify.error('Error starting simulation');
     } finally {
       setSimulationStarting(false);
     }
@@ -634,7 +662,7 @@ export default function Home() {
   // Update speed slider to control fast simulation speed
   const updateFastSimulationSpeed = async (speed: number) => {
     setSimulationSpeed(speed);
-    await fetch("/api/simulation/set-fast-speed", {
+    await fetch(`${BACKEND_URL}/api/simulation/set-fast-speed`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ speed }),
