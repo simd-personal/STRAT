@@ -38,6 +38,7 @@ export default function IncidentManagement() {
   const [priorityFilter, setPriorityFilter] = useState<string>("");
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showDispatchModal, setShowDispatchModal] = useState(false);
+  const [showIncidentDetailsModal, setShowIncidentDetailsModal] = useState(false);
   const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null);
   const [selectedIncidentId, setSelectedIncidentId] = useState<string | null>(null);
   const [mapCenter, setMapCenter] = useState<{ lat: number; lng: number }>({ lat: 33.6411, lng: -117.9187 });
@@ -199,6 +200,8 @@ export default function IncidentManagement() {
     setSelectedIncidentId(incident.incident_id);
     setMapCenter(incident.location);
     setMapZoom(16);
+    setSelectedIncident(incident);
+    setShowIncidentDetailsModal(true);
   };
 
   // Marker click handler
@@ -206,12 +209,16 @@ export default function IncidentManagement() {
     setSelectedIncidentId(incident.incident_id);
     setMapCenter(incident.location);
     setMapZoom(16);
+    setSelectedIncident(incident);
+    setShowIncidentDetailsModal(true);
   };
 
   const handleMapClick = (e: google.maps.MapMouseEvent) => {
     if (!showCreateModal && e.latLng) {
-      setModalIncidentLocation({ lat: e.latLng.lat(), lng: e.latLng.lng() });
-      setNewIncident({ ...newIncident, location: { lat: e.latLng.lat(), lng: e.latLng.lng() } });
+      const lat = e.latLng.lat();
+      const lng = e.latLng.lng();
+      setModalIncidentLocation({ lat, lng });
+      setNewIncident({ ...newIncident, location: { lat, lng } });
       setShowCreateModal(true);
       notify.info('Creating incident at selected location');
     }
@@ -523,6 +530,140 @@ export default function IncidentManagement() {
                 className="flex-1 px-4 py-2 bg-[#181A1B] text-[#F3F3E7] rounded-lg font-semibold hover:bg-[#2A2F3A] transition-colors"
               >
                 Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Incident Details Modal */}
+      {showIncidentDetailsModal && selectedIncident && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-[#23272f] rounded-2xl border border-[#A3B18A] p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-xl font-bold text-[#F3F3E7]">Incident Details</h2>
+              <button
+                onClick={() => setShowIncidentDetailsModal(false)}
+                className="text-[#A3B18A] hover:text-[#F3F3E7] transition-colors"
+              >
+                ✕
+              </button>
+            </div>
+            
+            <div className="space-y-4">
+              {/* Incident ID */}
+              <div className="flex items-center gap-2">
+                <span className="text-[#A3B18A] font-semibold w-24">ID:</span>
+                <span className="text-[#F3F3E7] font-mono text-sm">{selectedIncident.incident_id}</span>
+              </div>
+
+              {/* Type and Icon */}
+              <div className="flex items-center gap-2">
+                <span className="text-[#A3B18A] font-semibold w-24">Type:</span>
+                <span className="text-[#F3F3E7]">{selectedIncident.type}</span>
+                <img
+                  src={selectedIncident.type.toLowerCase() === 'hazard' ? '/hazard-icon.svg' : '/incident-icon.svg'}
+                  alt="Incident Icon"
+                  className="w-6 h-6 ml-2"
+                />
+              </div>
+
+              {/* Priority */}
+              <div className="flex items-center gap-2">
+                <span className="text-[#A3B18A] font-semibold w-24">Priority:</span>
+                <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getPriorityColor(selectedIncident.priority)}`}>
+                  {selectedIncident.priority}
+                </span>
+              </div>
+
+              {/* Status */}
+              <div className="flex items-center gap-2">
+                <span className="text-[#A3B18A] font-semibold w-24">Status:</span>
+                <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getStatusColor(selectedIncident.status)}`}>
+                  {selectedIncident.status}
+                </span>
+              </div>
+
+              {/* Location */}
+              <div className="flex items-center gap-2">
+                <span className="text-[#A3B18A] font-semibold w-24">Location:</span>
+                <span className="text-[#F3F3E7]">
+                  {selectedIncident.location.lat.toFixed(6)}, {selectedIncident.location.lng.toFixed(6)}
+                </span>
+              </div>
+
+              {/* Description */}
+              <div>
+                <span className="text-[#A3B18A] font-semibold block mb-2">Description:</span>
+                <p className="text-[#F3F3E7] bg-[#181A1B] p-3 rounded-lg border border-[#A3B18A]/20">
+                  {selectedIncident.description || "No description provided"}
+                </p>
+              </div>
+
+              {/* Created At */}
+              <div className="flex items-center gap-2">
+                <span className="text-[#A3B18A] font-semibold w-24">Created:</span>
+                <span className="text-[#F3F3E7]">
+                  {new Date(selectedIncident.created_at).toLocaleString()}
+                </span>
+              </div>
+
+              {/* Resolved At (if resolved) */}
+              {selectedIncident.resolved_at && (
+                <div className="flex items-center gap-2">
+                  <span className="text-[#A3B18A] font-semibold w-24">Resolved:</span>
+                  <span className="text-[#F3F3E7]">
+                    {new Date(selectedIncident.resolved_at).toLocaleString()}
+                  </span>
+                </div>
+              )}
+
+              {/* Assigned Units */}
+              <div>
+                <span className="text-[#A3B18A] font-semibold block mb-2">Assigned Units:</span>
+                {selectedIncident.assigned_units && selectedIncident.assigned_units.length > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    {selectedIncident.assigned_units.map((unit, index) => (
+                      <span key={index} className="px-2 py-1 bg-[#A3B18A]/20 text-[#A3B18A] rounded text-sm">
+                        {unit}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <span className="text-[#A3B18A] italic">No units assigned</span>
+                )}
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex gap-3 mt-6 pt-4 border-t border-[#A3B18A]/20">
+              {selectedIncident.status !== "resolved" && (
+                <>
+                  <button
+                    onClick={() => {
+                      setShowIncidentDetailsModal(false);
+                      setShowDispatchModal(true);
+                    }}
+                    className="flex-1 px-4 py-2 bg-[#A3B18A] text-[#181A1B] rounded-lg font-semibold hover:bg-[#8FA573] transition-colors"
+                  >
+                    Dispatch Unit
+                  </button>
+                  <button
+                    onClick={() => {
+                      resolveIncident(selectedIncident.incident_id);
+                      setShowIncidentDetailsModal(false);
+                    }}
+                    className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 transition-colors"
+                  >
+                    Resolve Incident
+                  </button>
+                </>
+              )}
+              <button
+                onClick={() => setShowIncidentDetailsModal(false)}
+                className="flex-1 px-4 py-2 bg-[#181A1B] text-[#F3F3E7] rounded-lg font-semibold hover:bg-[#2A2F3A] transition-colors"
+              >
+                Close
               </button>
             </div>
           </div>
