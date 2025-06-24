@@ -79,13 +79,15 @@ export default function Home() {
 
   // SITREP/CONOPS state
   const [sitrep, setSitrep] = useState<string>("");
-  const [conops, setConops] = useState<string>("");
   const [sitrepStatus, setSitrepStatus] = useState<'draft' | 'approved'>("draft");
-  const [conopsStatus, setConopsStatus] = useState<'draft' | 'approved'>("draft");
   const [sitrepHistory, setSitrepHistory] = useState<any[]>([]);
-  const [conopsHistory, setConopsHistory] = useState<any[]>([]);
   const [sitrepVersion, setSitrepVersion] = useState(1);
-  const [conopsVersion, setConopsVersion] = useState(1);
+
+  // Add new state for markdown preview
+  const [sitrepPreview, setSitrepPreview] = useState(false);
+
+  // Add offline/online toggle state
+  const [isOffline, setIsOffline] = useState(false);
 
   // Track manual edits for unsaved changes
   useEffect(() => {
@@ -416,14 +418,14 @@ export default function Home() {
     setSitrepHistory([...sitrepHistory, { content: sitrep, version: sitrepVersion, status: "approved", date: new Date().toISOString() }]);
     setSitrepVersion(sitrepVersion + 1);
   };
-  const approveConops = () => {
-    setConopsStatus("approved");
-    setConopsHistory([...conopsHistory, { content: conops, version: conopsVersion, status: "approved", date: new Date().toISOString() }]);
-    setConopsVersion(conopsVersion + 1);
-  };
   // Share handlers (placeholder)
   const shareSitrep = () => alert("SITREP shared with team (placeholder)");
-  const shareConops = () => alert("CONOPS shared with team (placeholder)");
+
+  // Add new function to start a new draft for SITREP
+  const startNewSitrepDraft = () => {
+    setSitrep("");
+    setSitrepStatus("draft");
+  };
 
   return (
     <div className="min-h-screen bg-black text-gray-100 font-mono flex flex-col items-center px-4 py-8">
@@ -711,102 +713,39 @@ export default function Home() {
                 )}
               </div>
             </div>
-            {/* SITREP/CONOPS */}
-            <div className="bg-gray-900/80 rounded-xl p-6 mb-6 border border-gray-800">
-              <h2 className="text-lg font-bold mb-2 flex items-center gap-2">SITREP / CONOPS
-                <span className="ml-2 text-xs text-gray-400">(Situation Report & Concept of Operations)</span>
-              </h2>
-              <div className="flex flex-col md:flex-row gap-6">
-                {/* SITREP */}
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="font-semibold">SITREP</span>
-                    <span className={`text-xs px-2 py-0.5 rounded ${sitrepStatus === 'approved' ? 'bg-green-800 text-green-200' : 'bg-yellow-800 text-yellow-200'}`}>{sitrepStatus.toUpperCase()}</span>
-                    <span className="text-xs text-gray-400">v{sitrepVersion}</span>
-                  </div>
-                  <textarea
-                    className="w-full min-h-[120px] bg-gray-800 text-gray-200 rounded px-3 py-2 font-mono text-sm mb-2 resize-vertical focus:outline-none focus:ring-2 focus:ring-blue-700"
-                    value={sitrep}
-                    onChange={e => { setSitrep(e.target.value); setSitrepStatus('draft'); }}
-                    disabled={sitrepStatus === 'approved'}
-                    placeholder="Type or paste the latest SITREP here..."
-                  />
-                  <div className="flex gap-2 mb-2">
-                    <button
-                      className="text-xs px-2 py-1 rounded bg-green-700 hover:bg-green-800 text-white border border-green-900 disabled:opacity-50"
-                      onClick={approveSitrep}
-                      disabled={sitrepStatus === 'approved' || !sitrep.trim()}
-                    >
-                      Approve
-                    </button>
-                    <button
-                      className="text-xs px-2 py-1 rounded bg-blue-700 hover:bg-blue-800 text-white border border-blue-900"
-                      onClick={shareSitrep}
-                      disabled={!sitrep.trim() || sitrepStatus !== 'approved'}
-                    >
-                      Share with team
-                    </button>
-                  </div>
-                  {/* SITREP Version History */}
-                  {sitrepHistory.length > 0 && (
-                    <div className="mt-2 text-xs">
-                      <div className="font-bold mb-1">SITREP History:</div>
-                      <ul className="space-y-1">
-                        {sitrepHistory.map((h, i) => (
-                          <li key={i} className="bg-gray-800 rounded p-2 flex flex-col">
-                            <span className="font-mono text-gray-300">{h.content}</span>
-                            <span className="text-gray-500">v{h.version} • {h.status} • {new Date(h.date).toLocaleString()}</span>
-                          </li>
-                        ))}
-                      </ul>
+            {/* SITREP / CONOPS Panel (now just SITREP) */}
+            <div className="bg-gray-900/90 rounded-xl p-6 flex flex-col gap-6 mt-4 max-w-xl w-full mx-auto shadow-lg border border-gray-800 overflow-x-auto">
+              {/* SITREP Card */}
+              <div className="flex flex-col gap-2 min-w-[260px] max-w-[520px] w-full mx-auto" style={{wordBreak: 'break-word', overflowWrap: 'break-word'}}>
+                <div className="flex items-center gap-2 mb-1">
+                  <h3 className="text-lg font-bold tracking-wide text-white">SITREP</h3>
+                  <span className={`text-xs px-2 py-0.5 rounded bg-${sitrepStatus === 'approved' ? 'green' : 'yellow'}-700 text-white ml-2`}>{sitrepStatus.toUpperCase()}</span>
+                  <span className="text-xs text-gray-400 ml-2">v{sitrepVersion}</span>
+                </div>
+                <div className="flex gap-2 mb-2">
+                  <button className="bg-green-800 hover:bg-green-700 text-xs px-3 py-1 rounded font-mono" onClick={approveSitrep} disabled={sitrepStatus==='approved'}>Approve</button>
+                  <button className="bg-blue-800 hover:bg-blue-700 text-xs px-3 py-1 rounded font-mono" onClick={shareSitrep}>Share with team</button>
+                  <button className="bg-gray-700 hover:bg-gray-600 text-xs px-3 py-1 rounded font-mono" onClick={startNewSitrepDraft} disabled={sitrepStatus==='draft'}>New Draft</button>
+                  <button className="bg-gray-800 hover:bg-gray-700 text-xs px-3 py-1 rounded font-mono" onClick={()=>setSitrepPreview(!sitrepPreview)}>{sitrepPreview ? 'Edit' : 'Preview'}</button>
+                </div>
+                <div className="relative">
+                  {sitrepPreview ? (
+                    <div className="bg-gray-800 rounded p-4 min-h-[120px] max-h-[220px] text-gray-200 text-base overflow-auto border border-gray-700" style={{wordBreak: 'break-word', overflowWrap: 'break-word'}}>
+                      <ReactMarkdown>{sitrep || '*No SITREP provided.*'}</ReactMarkdown>
                     </div>
+                  ) : (
+                    <textarea
+                      className="w-full min-h-[120px] max-h-[220px] bg-gray-800 text-gray-200 rounded px-4 py-3 font-mono text-base leading-relaxed resize-vertical focus:outline-none focus:ring-2 focus:ring-blue-700 border border-gray-700"
+                      style={{wordBreak: 'break-word', overflowWrap: 'break-word'}}
+                      value={sitrep}
+                      onChange={e => setSitrep(e.target.value)}
+                      disabled={sitrepStatus==='approved'}
+                      placeholder="Type or paste the latest SITREP here..."
+                    />
                   )}
                 </div>
-                {/* CONOPS */}
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="font-semibold">CONOPS</span>
-                    <span className={`text-xs px-2 py-0.5 rounded ${conopsStatus === 'approved' ? 'bg-green-800 text-green-200' : 'bg-yellow-800 text-yellow-200'}`}>{conopsStatus.toUpperCase()}</span>
-                    <span className="text-xs text-gray-400">v{conopsVersion}</span>
-                  </div>
-                  <textarea
-                    className="w-full min-h-[120px] bg-gray-800 text-gray-200 rounded px-3 py-2 font-mono text-sm mb-2 resize-vertical focus:outline-none focus:ring-2 focus:ring-blue-700"
-                    value={conops}
-                    onChange={e => { setConops(e.target.value); setConopsStatus('draft'); }}
-                    disabled={conopsStatus === 'approved'}
-                    placeholder="Type or paste the latest CONOPS here..."
-                  />
-                  <div className="flex gap-2 mb-2">
-                    <button
-                      className="text-xs px-2 py-1 rounded bg-green-700 hover:bg-green-800 text-white border border-green-900 disabled:opacity-50"
-                      onClick={approveConops}
-                      disabled={conopsStatus === 'approved' || !conops.trim()}
-                    >
-                      Approve
-                    </button>
-                    <button
-                      className="text-xs px-2 py-1 rounded bg-blue-700 hover:bg-blue-800 text-white border border-blue-900"
-                      onClick={shareConops}
-                      disabled={!conops.trim() || conopsStatus !== 'approved'}
-                    >
-                      Share with team
-                    </button>
-                  </div>
-                  {/* CONOPS Version History */}
-                  {conopsHistory.length > 0 && (
-                    <div className="mt-2 text-xs">
-                      <div className="font-bold mb-1">CONOPS History:</div>
-                      <ul className="space-y-1">
-                        {conopsHistory.map((h, i) => (
-                          <li key={i} className="bg-gray-800 rounded p-2 flex flex-col">
-                            <span className="font-mono text-gray-300">{h.content}</span>
-                            <span className="text-gray-500">v{h.version} • {h.status} • {new Date(h.date).toLocaleString()}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                </div>
+                <div className="text-xs text-gray-500 mt-1">(Situation Report: Up-to-date summary of the mission)</div>
+                <div className="text-xs text-gray-400 mt-2">History: {sitrepHistory.length} versions</div>
               </div>
             </div>
           </div>
@@ -814,12 +753,23 @@ export default function Home() {
       </main>
 
       {/* Offline Toggle */}
-      <div className="fixed bottom-6 right-6 bg-gray-900/90 border border-gray-800 rounded-full px-6 py-3 shadow-lg flex items-center gap-3">
-        <span className="text-gray-300 font-bold font-mono tracking-widest">OFFLINE MODE</span>
-        <button className="w-10 h-6 bg-gray-700 rounded-full flex items-center transition duration-200 focus:outline-none border border-gray-600">
-          <span className="w-4 h-4 bg-red-700 rounded-full shadow transform translate-x-1"></span>
+      <div className="fixed bottom-6 right-6 z-[100] sm:bottom-4 sm:right-4">
+        <button
+          className={`flex items-center gap-2 px-4 py-2 rounded-full shadow-lg border-2 ${isOffline ? 'bg-red-900 border-red-700 text-red-200' : 'bg-green-900 border-green-700 text-green-200'} transition-colors`}
+          onClick={() => setIsOffline(!isOffline)}
+          title={isOffline ? 'Switch to Online Mode' : 'Switch to Offline Mode'}
+          style={{ pointerEvents: 'auto' }}
+        >
+          <span className="font-bold text-xs tracking-widest uppercase">
+            {isOffline ? 'OFFLINE MODE' : 'ONLINE MODE'}
+          </span>
         </button>
       </div>
+      {isOffline && (
+        <div className="fixed top-0 left-0 w-full bg-red-900 text-red-100 text-center py-2 z-40 font-bold tracking-widest shadow-lg">
+          OFFLINE DEMO MODE ENABLED — No network actions will be performed.
+        </div>
+      )}
 
       {/* Plan Comparison Modal */}
       {showCompareModal && (
