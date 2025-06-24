@@ -5,6 +5,7 @@ import { useState, useRef, useEffect } from "react";
 import dynamic from "next/dynamic";
 import ReactMarkdown from "react-markdown";
 import Link from "next/link";
+import HoverSidebar from "../components/HoverSidebar";
 
 const Map = dynamic(() => import("react-map-gl/mapbox").then(mod => mod.Map), { ssr: false });
 const Marker = dynamic(() => import("react-map-gl/mapbox").then(mod => mod.Marker), { ssr: false });
@@ -27,34 +28,6 @@ const EVENT_TYPE_COLORS = {
   User: "bg-gray-700",
   System: "bg-red-700",
 };
-
-function SidebarNav() {
-  return (
-    <aside className="fixed left-0 top-0 h-full w-64 bg-gray-900 border-r border-gray-800 flex flex-col z-40">
-      <div className="px-6 py-5 border-b border-gray-800">
-        <span className="font-bold text-green-400 text-xl flex items-center gap-2">
-          <span>STRATOS AI Mission Modules</span>
-        </span>
-        <div className="text-xs text-gray-400 mt-2">A library of lightweight, pluggable decision tools for tactical workflows.</div>
-      </div>
-      <nav className="flex-1 p-4 space-y-2">
-        <SidebarLink href="/modules/route-optimization" label="Route Optimization" />
-        <SidebarLink href="/modules/asset-allocation" label="Asset Allocation" />
-        <SidebarLink href="/modules/contingency-plan" label="Contingency Plan Generator" />
-        <SidebarLink href="/modules/sitrep-composer" label="SITREP Composer" />
-        <SidebarLink href="/modules/aar-insights" label="AAR Insights & Debrief" />
-      </nav>
-    </aside>
-  );
-}
-
-function SidebarLink({ href, label }: { href: string, label: string }) {
-  return (
-    <Link href={href} className="flex items-center gap-3 px-3 py-2 rounded-lg text-gray-200 hover:bg-green-900/30 transition font-mono text-sm">
-      <span>{label}</span>
-    </Link>
-  );
-}
 
 export default function Home() {
   // State for PDF upload/summary
@@ -683,7 +656,7 @@ export default function Home() {
         </h2>
       </header>
 
-      <SidebarNav />
+      <HoverSidebar />
       <div className="ml-64">
         {/* Main Dashboard Grid */}
         <main className="w-full max-w-7xl grid grid-cols-1 md:grid-cols-2 gap-8">
