@@ -4,51 +4,65 @@ import Link from "next/link";
 
 export default function LandingPage() {
   return (
-    <div className="min-h-screen bg-black text-white flex flex-col font-sans">
+    <div className="min-h-screen bg-[#181A1B] text-[#F3F3E7] flex flex-col font-sans">
       {/* Top Navigation */}
-      <nav className="w-full flex items-center justify-between px-8 py-6 bg-black/80 border-b border-gray-800 backdrop-blur-md">
+      <nav className="w-full flex items-center justify-between px-8 py-6 bg-[#181A1B] border-b border-[#23272f]">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 bg-white rounded-lg flex items-center justify-center">
-            <span className="text-black font-bold text-lg tracking-wider">S</span>
+          <div className="w-9 h-9 bg-[#F3F3E7] rounded-lg flex items-center justify-center">
+            <span className="text-[#181A1B] font-bold text-lg tracking-wider">S</span>
           </div>
           <span className="text-2xl font-bold tracking-widest font-sans">STRATOS</span>
         </div>
         <Link
           href="/app"
-          className="px-7 py-2 border-2 border-white rounded-lg font-semibold text-white hover:bg-white hover:text-black transition-colors duration-200 text-lg tracking-wide"
+          className="px-7 py-2 border-2 border-[#F3F3E7] rounded-lg font-semibold text-[#F3F3E7] hover:bg-[#A3B18A] hover:text-[#181A1B] transition-colors duration-200 text-lg tracking-wide"
         >
           Get Started
         </Link>
       </nav>
 
       {/* Hero Section */}
-      <main className="relative w-full flex flex-col items-center justify-center min-h-[60vh] md:min-h-[70vh] py-24 md:py-36 overflow-hidden" style={{background: "linear-gradient(180deg, #111 60%, #23272f 100%)"}}>
-        {/* Enhanced Spotlight/Gradient Background */}
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none select-none z-0">
-          <div className="w-full h-full bg-gradient-radial from-blue-400/30 via-transparent to-black opacity-70 absolute top-0 left-0" style={{filter: 'blur(100px)'}}></div>
-          <div className="w-full h-full bg-gradient-to-b from-black/80 via-black/70 to-gray-900/80 absolute top-0 left-0" />
+      <main className="relative w-full flex flex-col items-center justify-center min-h-[60vh] md:min-h-[70vh] py-24 md:py-36 overflow-hidden">
+        {/* American-Style Flag Accent with More Stripes */}
+        <div className="flex items-center justify-center mb-8">
+          <svg width="58" height="36" viewBox="0 0 58 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+            {/* Flag background */}
+            <rect x="0" y="0" width="58" height="36" rx="4" fill="#A3B18A" />
+            {/* Canton (upper left square) */}
+            <rect x="5" y="5" width="13" height="13" rx="2" fill="#181A1B" />
+            {/* Stripes (5 total) */}
+            <rect x="5" y="20" width="48" height="2.2" rx="1.1" fill="#181A1B" />
+            <rect x="5" y="24" width="48" height="2.2" rx="1.1" fill="#181A1B" />
+            <rect x="5" y="28" width="48" height="2.2" rx="1.1" fill="#181A1B" />
+            <rect x="5" y="32" width="48" height="2.2" rx="1.1" fill="#181A1B" />
+            <rect x="5" y="36" width="48" height="2.2" rx="1.1" fill="#181A1B" />
+            {/* Small "stars" as dots in canton */}
+            <circle cx="8.5" cy="8.5" r="0.7" fill="#A3B18A" />
+            <circle cx="11.5" cy="8.5" r="0.7" fill="#A3B18A" />
+            <circle cx="14.5" cy="8.5" r="0.7" fill="#A3B18A" />
+            <circle cx="8.5" cy="11.5" r="0.7" fill="#A3B18A" />
+            <circle cx="11.5" cy="11.5" r="0.7" fill="#A3B18A" />
+            <circle cx="14.5" cy="11.5" r="0.7" fill="#A3B18A" />
+          </svg>
         </div>
-        {/* Main Slogan */}
-        <div className="relative z-10 flex flex-col items-center w-full">
-          <h1 className="text-[8vw] md:text-[5vw] font-extralight font-sans tracking-tight text-white text-center leading-tight" style={{letterSpacing: '-0.03em', fontFamily: 'Inter, Space Grotesk, DM Sans, sans-serif'}}>A new era of command power</h1>
-          <p className="mt-8 text-2xl md:text-3xl font-light text-gray-200 text-center max-w-4xl">
-            STRATOS is building the AI command system for the modern battlefield — a secure, deploy-anywhere platform that lets operators plan, simulate, and adapt missions in real time, with or without a connection.
-          </p>
-          {/* CTA Button */}
-          <div className="mt-16 md:mt-20 flex justify-center w-full">
-            <Link
-              href="#features"
-              className="px-10 py-4 border border-white rounded-lg font-semibold text-white bg-transparent hover:bg-white hover:text-black transition-colors duration-200 text-lg tracking-wide relative group"
-            >
-              <span className="relative z-10">LEARN MORE</span>
-              <span className="absolute inset-0 border border-white rounded-lg opacity-40 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none"></span>
-            </Link>
-          </div>
+        <h1 className="text-[7vw] md:text-[5vw] font-extralight font-sans tracking-tight text-[#F3F3E7] text-center leading-tight" style={{letterSpacing: '-0.03em', fontFamily: 'Inter, Space Grotesk, DM Sans, sans-serif'}}>A new era of command power</h1>
+        <p className="mt-8 text-2xl md:text-3xl font-light text-[#F3F3E7] text-center max-w-4xl">
+          STRATOS is building the AI command system for the modern battlefield — a secure, deploy-anywhere platform that lets operators plan, simulate, and adapt missions in real time, with or without a connection.
+        </p>
+        {/* CTA Button */}
+        <div className="mt-16 md:mt-20 flex justify-center w-full">
+          <Link
+            href="#features"
+            className="px-10 py-4 border border-[#F3F3E7] rounded-lg font-semibold text-[#F3F3E7] bg-transparent hover:bg-[#A3B18A] hover:text-[#181A1B] transition-colors duration-200 text-lg tracking-wide relative group"
+          >
+            <span className="relative z-10">LEARN MORE</span>
+            <span className="absolute inset-0 border border-[#F3F3E7] rounded-lg opacity-40 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none"></span>
+          </Link>
         </div>
       </main>
 
       {/* Features Section */}
-      <section id="features" className="w-full bg-gray-100 text-gray-900 py-24 px-4">
+      <section id="features" className="w-full bg-[#23272f] text-[#F3F3E7] py-24 px-4">
         <div className="max-w-6xl mx-auto">
           <h2 className="text-4xl md:text-5xl font-extrabold mb-12 text-center tracking-tight">Platform Features</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10">
@@ -66,7 +80,7 @@ export default function LandingPage() {
       </section>
 
       {/* Footer */}
-      <footer className="w-full text-center py-6 text-gray-400 text-sm bg-black/80 border-t border-gray-800">
+      <footer className="w-full text-center py-6 text-[#A3B18A] text-sm bg-[#181A1B] border-t border-[#23272f]">
         &copy; {new Date().getFullYear()} STRATOS. The AI Command System for the Modern Battlefield.
       </footer>
     </div>
@@ -75,9 +89,9 @@ export default function LandingPage() {
 
 function FeatureCard({ title, desc }: { title: string; desc: string }) {
   return (
-    <div className="bg-white rounded-2xl shadow-md p-8 flex flex-col items-start hover:shadow-xl transition-shadow duration-300 border border-gray-200">
-      <h3 className="text-2xl font-semibold mb-3 font-sans tracking-tight">{title}</h3>
-      <p className="text-gray-600 text-lg font-light">{desc}</p>
+    <div className="bg-[#23272f] rounded-2xl shadow-md p-8 flex flex-col items-start hover:shadow-xl transition-shadow duration-300 border border-[#A3B18A]">
+      <h3 className="text-2xl font-semibold mb-3 font-sans tracking-tight text-[#A3B18A]">{title}</h3>
+      <p className="text-[#F3F3E7] text-lg font-light">{desc}</p>
     </div>
   );
 } 
