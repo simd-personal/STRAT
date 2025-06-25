@@ -24,3 +24,24 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Map container styles to prevent overlay issues */
+.map-container {
+  position: relative;
+  z-index: 1;
+  contain: layout;
+  isolation: isolate;
+}
+
+.map-container > div {
+  position: relative;
+  z-index: 1;
+  contain: layout;
+}
+
+/* Ensure Google Maps doesn't overflow its container */
+.map-container .gm-style {
+  position: relative !important;
+  z-index: 1 !important;
+  contain: layout !important;
+}

@@ -281,6 +281,7 @@ export default function Home() {
         console.log('lat:', data.lat, typeof data.lat, 'lng:', data.lng, typeof data.lng);
         setMapCoords({ lat: latNum, lng: lngNum });
         console.log('Setting mapCoords:', { lat: latNum, lng: lngNum });
+        notify.success(`Location extracted: ${latNum.toFixed(4)}, ${lngNum.toFixed(4)}`);
         setSummarizing(false);
         return;
       }
@@ -293,6 +294,7 @@ export default function Home() {
         if (geoData.features && geoData.features.length > 0) {
           const [lng, lat] = geoData.features[0].center;
           setMapCoords({ lat, lng });
+          notify.success(`Location found: ${data.location_name} (${lat.toFixed(4)}, ${lng.toFixed(4)})`);
           setSummarizing(false);
           return;
         }
@@ -358,6 +360,9 @@ export default function Home() {
       setSummary("Error summarizing PDF.");
     }
     setSummarizing(false);
+    if (!mapCoords) {
+      notify.info("No location data found in document. Map will show default view.");
+    }
   };
 
   // Fix quick prompts to fill the input and trigger plan generation
@@ -841,32 +846,31 @@ export default function Home() {
       </header>
 
       <HoverSidebar />
-      <div className="ml-64">
+      <div className="ml-64 relative z-50">
         {/* Main Dashboard Grid */}
-        <main className="w-full max-w-7xl grid grid-cols-1 md:grid-cols-2 gap-8">
-          {/* Left Column */}
-          <section className="flex flex-col gap-8">
-            {/* PDF Upload & Summary */}
-            <div className="bg-gray-900/80 rounded-xl p-6 shadow-lg border border-gray-800">
-              <h3 className="text-lg font-bold mb-2 text-white font-mono tracking-widest">Upload Mission Docs</h3>
-              <div className="flex flex-col gap-2">
-                <span className="text-xs text-gray-400">Accepts PDF, TXT, CSV, JSON, images, and video files</span>
-                <input
-                  type="file"
-                  accept=".pdf,.txt,.csv,.json,image/*,video/*"
-                  ref={fileInputRef}
-                  onChange={handleFileChange}
-                  className="file:bg-gray-800 file:text-gray-200 file:border-none file:rounded file:px-4 file:py-2 file:mr-4 font-mono tracking-widest"
-                />
-                <button
-                  className="mt-2 border border-gray-600 bg-black/60 hover:bg-gray-800 text-white font-mono font-bold tracking-widest py-2 px-6 rounded transition disabled:opacity-50 shadow-md"
-                  onClick={handleSummarize}
-                  disabled={!pdfFile || summarizing}
-                >
-                  {summarizing ? "SUMMARIZING..." : "SUMMARIZE WITH AI"}
-                </button>
-              </div>
-              {/* Improved AI Summary Card */}
+        <main className="w-full max-w-7xl grid grid-cols-1 md:grid-cols-2 gap-8 relative z-50">
+          {/* Upload Mission Docs (with summary inside) */}
+          <div className="bg-gray-900/80 rounded-xl p-6 shadow-lg border border-gray-800 min-h-[300px] flex flex-col">
+            <h3 className="text-lg font-bold mb-2 text-white font-mono tracking-widest">Upload Mission Docs</h3>
+            <div className="flex flex-col gap-2">
+              <span className="text-xs text-gray-400">Accepts PDF, TXT, CSV, JSON, images, and video files</span>
+              <input
+                type="file"
+                accept=".pdf,.txt,.csv,.json,image/*,video/*"
+                ref={fileInputRef}
+                onChange={handleFileChange}
+                className="file:bg-gray-800 file:text-gray-200 file:border-none file:rounded file:px-4 file:py-2 file:mr-4 font-mono tracking-widest"
+              />
+              <button
+                className="mt-2 border border-gray-600 bg-black/60 hover:bg-gray-800 text-white font-mono font-bold tracking-widest py-2 px-6 rounded transition disabled:opacity-50 shadow-md"
+                onClick={handleSummarize}
+                disabled={!pdfFile || summarizing}
+              >
+                {summarizing ? "SUMMARIZING..." : "SUMMARIZE WITH AI"}
+              </button>
+            </div>
+            {/* Improved AI Summary Card */}
+            {(summary || pdfFile) && (
               <div className="bg-gray-900/90 rounded-xl p-6 mt-6 border border-gray-800 shadow-lg">
                 <div className="flex items-center gap-3 mb-3">
                   <svg className="w-6 h-6 text-blue-400" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
@@ -884,366 +888,391 @@ export default function Home() {
                   )}
                 </div>
               </div>
-            </div>
+            )}
+          </div>
 
-            {/* Mission Planning (Natural Language) */}
-            <div className="bg-gray-900/80 rounded-xl p-6 shadow-lg border border-gray-800 relative">
-              <button
-                className="absolute top-4 right-4 bg-red-800 hover:bg-red-900 text-xs text-white px-2 py-1 rounded font-mono border border-gray-700 z-10"
-                onClick={clearSession}
-                title="Clear session (reset all mission planning data)"
-              >
-                Clear Session
-              </button>
-              <h3 className="text-lg font-bold mb-2 text-white font-mono tracking-widest">Mission Planning</h3>
-              <input
-                type="text"
-                placeholder="Write your own mission planning prompt..."
-                value={planPrompt}
-                onChange={e => setPlanPrompt(e.target.value)}
-                className="w-full bg-gray-800 text-gray-200 rounded px-3 py-2 mb-2 font-mono tracking-widest"
-              />
-              <button
-                className="border border-gray-600 bg-black/60 hover:bg-blue-800 text-white font-mono font-bold tracking-widest py-2 px-6 rounded transition disabled:opacity-50 shadow-md"
-                onClick={handlePlan}
-                disabled={!planPrompt || planning}
-              >
-                {planning ? "GENERATING..." : "GENERATE PLAN"}
-              </button>
-              {planError && <div className="text-red-400 mt-2 text-xs">{planError}</div>}
-              {/* Dynamic Plan Editor */}
-              <div className="mt-6">
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="font-bold text-white">Dynamic Mission Plan</span>
-                  {masterPlan && masterPlan.content && (
-                    <span className="ml-2 px-2 py-0.5 rounded bg-green-800 text-xs font-bold">MASTER PLAN</span>
-                  )}
+          {/* Operational Map */}
+          <div className="bg-gray-900/80 rounded-xl p-6 shadow-lg border border-gray-800 min-h-[300px] flex flex-col">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-lg font-bold text-white font-mono tracking-widest">Operational Map</h3>
+              <div className="flex items-center gap-2">
+                {mapCoords && (
+                  <div className="flex items-center gap-2 text-xs text-green-400 bg-green-900/50 px-2 py-1 rounded border border-green-700">
+                    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" />
+                    </svg>
+                    <span>Mission Location: {mapCoords.lat.toFixed(4)}, {mapCoords.lng.toFixed(4)}</span>
+                  </div>
+                )}
+                {mapCoords && (
                   <button
-                    className="ml-auto bg-gray-800 hover:bg-purple-800 text-xs text-white px-3 py-1 rounded font-mono border border-gray-700"
-                    onClick={archivePlan}
-                    disabled={planLoading}
+                    onClick={() => {
+                      setMapCoords(null);
+                      notify.info("Location data cleared");
+                    }}
+                    className="text-xs text-gray-400 hover:text-red-400 bg-gray-800 hover:bg-red-900/50 px-2 py-1 rounded border border-gray-700 hover:border-red-700 transition-colors"
+                    title="Clear location data"
                   >
-                    Archive Plan
+                    Clear
                   </button>
-                  <button
-                    className="bg-gray-800 hover:bg-green-800 text-xs text-white px-3 py-1 rounded font-mono border border-gray-700"
-                    onClick={setAsMasterPlan}
-                    disabled={planLoading}
-                  >
-                    Set as Master Plan
-                  </button>
-                </div>
-                <textarea
-                  className="w-full min-h-[300px] bg-gray-800 text-gray-200 rounded px-4 py-3 font-mono tracking-widest mb-2 text-base leading-relaxed resize-vertical focus:outline-none focus:ring-2 focus:ring-blue-700"
-                  value={planEdit}
-                  onChange={e => setPlanEdit(e.target.value)}
-                  disabled={planLoading}
-                  placeholder="Type or edit your mission plan here."
+                )}
+              </div>
+            </div>
+            <div className="flex-1 flex items-center justify-center text-gray-500 italic border-2 border-dashed border-gray-700 rounded-lg relative z-10 overflow-hidden">
+              <div className="w-full h-full relative z-10 overflow-hidden" style={{ minHeight: 200 }}>
+                <GoogleOpsMap 
+                  units={units} 
+                  incidents={incidents} 
+                  center={mapCoords || { lat: 39.8283, lng: -98.5795 }}
+                  zoom={mapCoords ? 12 : 5}
+                  missionLocation={mapCoords}
                 />
-                {unsaved && <div className="text-yellow-400 text-xs mb-2">You have unsaved changes.</div>}
-                {showUnsavedWarning && (
-                  <div className="bg-yellow-900 text-yellow-200 p-4 rounded mb-2 flex flex-col gap-2">
-                    <span>You have unsaved manual edits. Please save or discard them before using AI actions.</span>
-                    <div className="flex gap-2">
-                      <button className="bg-blue-800 px-3 py-1 rounded" onClick={() => { savePlan(); setShowUnsavedWarning(false); }}>Save & Continue</button>
-                      <button className="bg-gray-700 px-3 py-1 rounded" onClick={() => { setPlanEdit(currentPlan?.content || ""); setShowUnsavedWarning(false); }}>Discard Changes</button>
-                      <button className="bg-red-800 px-3 py-1 rounded" onClick={() => setShowUnsavedWarning(false)}>Cancel</button>
-                    </div>
-                  </div>
-                )}
-                <div className="flex gap-2 mb-2">
-                  <input
-                    type="text"
-                    placeholder="Refine plan with AI (e.g., 'Add more detail to phase 2')"
-                    value={refinePrompt}
-                    onChange={e => setRefinePrompt(e.target.value)}
-                    className="flex-1 bg-gray-800 text-gray-200 rounded px-3 py-2 font-mono tracking-widest"
-                    disabled={refining}
-                  />
-                  <button
-                    className="border border-gray-600 bg-purple-800 hover:bg-purple-900 text-white font-mono font-bold tracking-widest py-2 px-4 rounded transition disabled:opacity-50 shadow-md"
-                    onClick={handleRefine}
-                    disabled={!refinePrompt || refining}
-                  >
-                    {refining ? "REFINING..." : "REFINE WITH AI"}
-                  </button>
-                </div>
-                <button
-                  className="border border-gray-600 bg-blue-800 hover:bg-blue-900 text-white font-mono font-bold tracking-widest py-2 px-6 rounded transition disabled:opacity-50 shadow-md"
-                  onClick={savePlan}
-                  disabled={planLoading || planEdit === (currentPlan?.content || "")}
-                >
-                  {planLoading ? "SAVING..." : "SAVE/UPDATE PLAN"}
-                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Mission Planning */}
+          <div className="bg-gray-900/80 rounded-xl p-6 shadow-lg border border-gray-800 min-h-[300px] flex flex-col relative">
+            <button
+              className="absolute top-4 right-4 bg-red-800 hover:bg-red-900 text-xs text-white px-2 py-1 rounded font-mono border border-gray-700 z-10"
+              onClick={clearSession}
+              title="Clear session (reset all mission planning data)"
+            >
+              Clear Session
+            </button>
+            <h3 className="text-lg font-bold mb-2 text-white font-mono tracking-widest">Mission Planning</h3>
+            <input
+              type="text"
+              placeholder="Write your own mission planning prompt..."
+              value={planPrompt}
+              onChange={e => setPlanPrompt(e.target.value)}
+              className="w-full bg-gray-800 text-gray-200 rounded px-3 py-2 mb-2 font-mono tracking-widest"
+            />
+            <button
+              className="border border-gray-600 bg-black/60 hover:bg-blue-800 text-white font-mono font-bold tracking-widest py-2 px-6 rounded transition disabled:opacity-50 shadow-md"
+              onClick={handlePlan}
+              disabled={!planPrompt || planning}
+            >
+              {planning ? "GENERATING..." : "GENERATE PLAN"}
+            </button>
+            {planError && <div className="text-red-400 mt-2 text-xs">{planError}</div>}
+            {/* Dynamic Plan Editor */}
+            <div className="mt-6">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="font-bold text-white">Dynamic Mission Plan</span>
                 {masterPlan && masterPlan.content && (
-                  <div className="mt-4 p-2 bg-green-900/60 rounded">
-                    <div className="font-bold text-green-300 mb-1">Master Plan (Locked)</div>
-                    <pre className="text-xs text-green-100 whitespace-pre-wrap">{masterPlan.content}</pre>
-                  </div>
+                  <span className="ml-2 px-2 py-0.5 rounded bg-green-800 text-xs font-bold">MASTER PLAN</span>
                 )}
-                {/* Plan History */}
-                <div className="mt-6">
-                  <div className="font-bold text-white mb-2">Plan History</div>
-                  {planHistory.length === 0 ? (
-                    <div className="text-gray-500 italic">No archived plans yet.</div>
-                  ) : (
-                    <div className="flex flex-col gap-2">
-                      {planHistory.map((arch, idx) => (
-                        <div key={idx} className="bg-gray-800/70 p-2 rounded flex items-center gap-2">
-                          <span className="text-xs text-gray-400">{arch.label} ({new Date(arch.timestamp).toLocaleString()})</span>
-                          <button
-                            className="ml-auto bg-gray-700 hover:bg-blue-700 text-xs text-white px-2 py-1 rounded font-mono border border-gray-600"
-                            onClick={() => setPlanViewIdx(idx)}
-                          >
-                            View
-                          </button>
-                          <button
-                            className="bg-gray-700 hover:bg-purple-700 text-xs text-white px-2 py-1 rounded font-mono border border-gray-600"
-                            onClick={() => restorePlan(idx)}
-                          >
-                            Restore
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  {/* Plan View Modal */}
-                  {planViewIdx !== null && planHistory[planViewIdx] && (
-                    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
-                      <div className="bg-gray-900 rounded-xl p-6 max-w-2xl w-full shadow-lg border border-gray-800 relative">
-                        <button
-                          className="absolute top-2 right-2 text-gray-400 hover:text-white text-2xl"
-                          onClick={() => setPlanViewIdx(null)}
-                          aria-label="Close"
-                        >
-                          ×
-                        </button>
-                        <div className="font-bold text-white mb-2 text-lg">{planHistory[planViewIdx].label}</div>
-                        <div className="text-xs text-gray-400 mb-4">{new Date(planHistory[planViewIdx].timestamp).toLocaleString()}</div>
-                        <div className="overflow-y-auto max-h-[60vh] p-2 bg-gray-800 rounded mb-4 prose prose-invert prose-sm prose-pre:bg-transparent prose-pre:p-0 prose-pre:m-0 prose-pre:whitespace-pre-wrap">
-                          <ReactMarkdown>{planHistory[planViewIdx].content}</ReactMarkdown>
-                        </div>
-                        <div className="flex gap-2 justify-end">
-                          <button
-                            className="bg-blue-800 hover:bg-blue-900 text-xs text-white px-3 py-1 rounded font-mono border border-gray-700"
-                            onClick={() => {
-                              setPlanEdit(planHistory[planViewIdx].content);
-                              setPlanViewIdx(null);
-                            }}
-                          >
-                            Copy to Editor
-                          </button>
-                          <button
-                            className="bg-gray-700 hover:bg-gray-800 text-xs text-white px-3 py-1 rounded font-mono border border-gray-700"
-                            onClick={() => setPlanViewIdx(null)}
-                          >
-                            Close
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-                {/* Plan Comparison Button */}
-                <div className="flex gap-2 items-center mb-2">
-                  <button
-                    className="text-xs px-2 py-1 rounded bg-gray-700 hover:bg-blue-700 text-white border border-gray-600"
-                    onClick={() => setShowCompareModal(true)}
-                    disabled={planHistory.length < 2 && !currentPlan}
-                    title="Compare two plans side by side"
-                  >
-                    Compare Plans
-                  </button>
-                </div>
-              </div>
-            </div>
-          </section>
-
-          {/* Right Column */}
-          <section className="flex flex-col gap-8">
-            {/* Interactive Ops Map */}
-            <div className="bg-gray-900/80 rounded-xl p-6 shadow-lg border border-gray-800 h-72 flex flex-col">
-              <h3 className="text-lg font-bold mb-2 text-white font-mono tracking-widest">Operational Map</h3>
-              <div className="flex-1 flex items-center justify-center text-gray-500 italic border-2 border-dashed border-gray-700 rounded-lg">
-                <div className="w-full h-full" style={{ minHeight: 200 }}>
-                  <GoogleOpsMap units={units} incidents={incidents} />
-                </div>
-              </div>
-            </div>
-
-            {/* Mission Simulation Panel - Moved under map */}
-            <div className="bg-gray-900/80 rounded-xl p-6 shadow-lg border border-gray-800">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-bold text-white font-mono tracking-widest">Mission Simulation</h3>
                 <button
-                  className="bg-blue-800 hover:bg-blue-900 text-xs text-white px-3 py-1 rounded font-mono border border-gray-700"
-                  onClick={() => setShowSimulationPanel(!showSimulationPanel)}
+                  className="ml-auto bg-gray-800 hover:bg-purple-800 text-xs text-white px-3 py-1 rounded font-mono border border-gray-700"
+                  onClick={archivePlan}
+                  disabled={planLoading}
                 >
-                  {showSimulationPanel ? 'Hide' : 'Show'} Timeline
+                  Archive Plan
+                </button>
+                <button
+                  className="bg-gray-800 hover:bg-green-800 text-xs text-white px-3 py-1 rounded font-mono border border-gray-700"
+                  onClick={setAsMasterPlan}
+                  disabled={planLoading}
+                >
+                  Set as Master Plan
                 </button>
               </div>
-              
-              {/* Simulation Controls */}
-              <div className="flex flex-wrap gap-2 mb-4">
-                <button
-                  className="px-3 py-2 rounded font-mono text-xs font-bold border bg-blue-800 border-blue-600 text-blue-200 hover:bg-blue-700 transition"
-                  onClick={startFastSimulation}
-                  disabled={controlsDisabled || simulationStarting}
-                >
-                  Start Simulation
-                </button>
-                <button
-                  className={`px-3 py-2 rounded font-mono text-xs font-bold border transition ${
-                    simulationStatus === 'idle' 
-                      ? 'bg-blue-800 border-blue-600 text-blue-200 hover:bg-blue-700' 
-                      : 'bg-gray-700 border-gray-600 text-gray-300'
-                  }`}
-                  onClick={startRealTimeSimulation}
-                  disabled={controlsDisabled}
-                >
-                  Start Real-Time
-                </button>
-                <button
-                  className={`px-3 py-2 rounded font-mono text-xs font-bold border transition ${
-                    simulationStatus === 'running' 
-                      ? 'bg-yellow-800 border-yellow-600 text-yellow-200 hover:bg-yellow-700' 
-                      : 'bg-gray-700 border-gray-600 text-gray-300'
-                  }`}
-                  onClick={pauseSimulation}
-                  disabled={controlsDisabled}
-                >
-                  Pause
-                </button>
-                <button
-                  className={`px-3 py-2 rounded font-mono text-xs font-bold border transition ${
-                    simulationStatus === 'paused' 
-                      ? 'bg-green-800 border-green-600 text-green-200 hover:bg-green-700' 
-                      : 'bg-gray-700 border-gray-600 text-gray-300'
-                  }`}
-                  onClick={resumeSimulation}
-                  disabled={controlsDisabled}
-                >
-                  Resume
-                </button>
-                <button
-                  className={`px-3 py-2 rounded font-mono text-xs font-bold border transition ${
-                    simulationStatus !== 'idle' 
-                      ? 'bg-red-800 border-red-600 text-red-200 hover:bg-red-700' 
-                      : 'bg-gray-700 border-gray-600 text-gray-300'
-                  }`}
-                  onClick={stopSimulation}
-                  disabled={controlsDisabled}
-                >
-                  Stop
-                </button>
-                <button
-                  className="px-3 py-2 rounded font-mono text-xs font-bold border bg-purple-800 border-purple-600 text-purple-200 hover:bg-purple-700 transition"
-                  onClick={stepSimulation}
-                  disabled={controlsDisabled}
-                >
-                  Step Forward
-                </button>
-                <button
-                  className="px-3 py-2 rounded font-mono text-xs font-bold border bg-orange-800 border-orange-600 text-orange-200 hover:bg-orange-700 transition"
-                  onClick={() => setShowInjectModal(true)}
-                >
-                  Inject Event
-                </button>
-                <button
-                  className="px-3 py-2 rounded font-mono text-xs font-bold border bg-gray-700 border-gray-600 text-white hover:bg-gray-800 transition"
-                  onClick={() => { setShowReportsModal(true); fetchAAR(); }}
-                >
-                  Reports
-                </button>
-              </div>
-
-              {/* Simulation Status */}
-              <div className="grid grid-cols-2 gap-4 mb-4 text-sm">
-                <div className="bg-gray-800/50 p-3 rounded border border-gray-700">
-                  <div className="text-gray-400 font-mono">Status</div>
-                  <div className={`font-bold ${simulationStatus === 'running' ? 'text-green-400' : simulationStatus === 'paused' ? 'text-yellow-400' : simulationStatus === 'completed' ? 'text-blue-400' : 'text-gray-400'}`}>
-                    {simulationStatus.toUpperCase()}
+              <textarea
+                className="w-full min-h-[150px] bg-gray-800 text-gray-200 rounded px-4 py-3 font-mono tracking-widest mb-2 text-base leading-relaxed resize-vertical focus:outline-none focus:ring-2 focus:ring-blue-700"
+                value={planEdit}
+                onChange={e => setPlanEdit(e.target.value)}
+                disabled={planLoading}
+                placeholder="Type or edit your mission plan here."
+              />
+              {unsaved && <div className="text-yellow-400 text-xs mb-2">You have unsaved changes.</div>}
+              {showUnsavedWarning && (
+                <div className="bg-yellow-900 text-yellow-200 p-4 rounded mb-2 flex flex-col gap-2">
+                  <span>You have unsaved manual edits. Please save or discard them before using AI actions.</span>
+                  <div className="flex gap-2">
+                    <button className="bg-blue-800 px-3 py-1 rounded" onClick={() => { savePlan(); setShowUnsavedWarning(false); }}>Save & Continue</button>
+                    <button className="bg-gray-700 px-3 py-1 rounded" onClick={() => { setPlanEdit(currentPlan?.content || ""); setShowUnsavedWarning(false); }}>Discard Changes</button>
+                    <button className="bg-red-800 px-3 py-1 rounded" onClick={() => setShowUnsavedWarning(false)}>Cancel</button>
                   </div>
-                </div>
-                <div className="bg-gray-800/50 p-3 rounded border border-gray-700">
-                  <div className="text-gray-400 font-mono">Time</div>
-                  <div className="font-bold text-white">{simulationTime}</div>
-                </div>
-                <div className="bg-gray-800/50 p-3 rounded border border-gray-700">
-                  <div className="text-gray-400 font-mono">Duration</div>
-                  <div className="font-bold text-white">{simulationDuration} min</div>
-                </div>
-                <div className="bg-gray-800/50 p-3 rounded border border-gray-700">
-                  <div className="text-gray-400 font-mono">Speed</div>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="range"
-                      min="1"
-                      max="60"
-                      value={simulationSpeed}
-                      onChange={(e) => updateFastSimulationSpeed(Number(e.target.value))}
-                      className="flex-1"
-                    />
-                    <span className="text-xs text-white">{simulationSpeed}s</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Simulation Timeline */}
-              {showSimulationPanel && (
-                <div className="bg-gray-800/50 rounded border border-gray-700 p-6 max-h-96 overflow-y-auto">
-                  <h4 className="font-bold text-white mb-4 font-mono tracking-widest text-lg">Timeline</h4>
-                  {simulationStarting && (
-                    <div className="flex items-center justify-center gap-2 text-blue-400 mb-4 animate-pulse">
-                      <svg className="w-5 h-5 animate-spin" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
-                      </svg>
-                      <span>Starting simulation...</span>
-                    </div>
-                  )}
-                  {timelineLoading && simulationStatus === 'running' && (
-                    <div className="flex items-center justify-center gap-2 text-blue-400 mb-4 animate-pulse">
-                      <svg className="w-5 h-5 animate-spin" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
-                      </svg>
-                      <span>Waiting for next event...</span>
-                    </div>
-                  )}
-                  {bufferedTimeline.length > 0 ? (
-                    <div className="space-y-3">
-                      {bufferedTimeline.slice().reverse().map((event, index) => (
-                        <div key={index} className="bg-gray-700/50 p-4 rounded border-l-4 border-blue-500 hover:bg-gray-700/70 transition-colors">
-                          <div className="flex items-center gap-3 mb-2">
-                            <span className="text-sm font-bold text-blue-400 font-mono">{event.time}</span>
-                            <span className={`px-3 py-1 rounded text-sm font-bold ${
-                              event.type === 'asset' ? 'bg-green-700' : 
-                              event.type === 'threat' ? 'bg-red-700' : 
-                              event.type === 'weather' ? 'bg-blue-700' : 'bg-gray-700'
-                            }`}>
-                              {event.type.toUpperCase()}
-                            </span>
-                          </div>
-                          <div className="text-base text-white leading-relaxed">{event.narrative}</div>
-                          {event.details && (
-                            <details className="mt-3">
-                              <summary className="text-sm text-gray-400 cursor-pointer hover:text-gray-300 font-medium">Details</summary>
-                              <pre className="text-sm text-gray-300 mt-2 bg-gray-800 p-3 rounded overflow-x-auto border border-gray-600">
-                                {JSON.stringify(event.details, null, 2)}
-                              </pre>
-                            </details>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="text-gray-500 italic text-center py-12 text-lg">No simulation events yet. Start the simulation to see the timeline.</div>
-                  )}
                 </div>
               )}
+              <div className="flex gap-2 mb-2">
+                <input
+                  type="text"
+                  placeholder="Refine plan with AI (e.g., 'Add more detail to phase 2')"
+                  value={refinePrompt}
+                  onChange={e => setRefinePrompt(e.target.value)}
+                  className="flex-1 bg-gray-800 text-gray-200 rounded px-3 py-2 font-mono tracking-widest"
+                  disabled={refining}
+                />
+                <button
+                  className="border border-gray-600 bg-purple-800 hover:bg-purple-900 text-white font-mono font-bold tracking-widest py-2 px-4 rounded transition disabled:opacity-50 shadow-md"
+                  onClick={handleRefine}
+                  disabled={!refinePrompt || refining}
+                >
+                  {refining ? "REFINING..." : "REFINE WITH AI"}
+                </button>
+              </div>
+              <button
+                className="border border-gray-600 bg-blue-800 hover:bg-blue-900 text-white font-mono font-bold tracking-widest py-2 px-6 rounded transition disabled:opacity-50 shadow-md"
+                onClick={savePlan}
+                disabled={planLoading || planEdit === (currentPlan?.content || "")}
+              >
+                {planLoading ? "SAVING..." : "SAVE/UPDATE PLAN"}
+              </button>
+              {masterPlan && masterPlan.content && (
+                <div className="mt-4 p-2 bg-green-900/60 rounded">
+                  <div className="font-bold text-green-300 mb-1">Master Plan (Locked)</div>
+                  <pre className="text-xs text-green-100 whitespace-pre-wrap">{masterPlan.content}</pre>
+                </div>
+              )}
+              {/* Plan History */}
+              <div className="mt-6">
+                <div className="font-bold text-white mb-2">Plan History</div>
+                {planHistory.length === 0 ? (
+                  <div className="text-gray-500 italic">No archived plans yet.</div>
+                ) : (
+                  <div className="flex flex-col gap-2">
+                    {planHistory.map((arch, idx) => (
+                      <div key={idx} className="bg-gray-800/70 p-2 rounded flex items-center gap-2">
+                        <span className="text-xs text-gray-400">{arch.label} ({new Date(arch.timestamp).toLocaleString()})</span>
+                        <button
+                          className="ml-auto bg-gray-700 hover:bg-blue-700 text-xs text-white px-2 py-1 rounded font-mono border border-gray-600"
+                          onClick={() => setPlanViewIdx(idx)}
+                        >
+                          View
+                        </button>
+                        <button
+                          className="bg-gray-700 hover:bg-purple-700 text-xs text-white px-2 py-1 rounded font-mono border border-gray-600"
+                          onClick={() => restorePlan(idx)}
+                        >
+                          Restore
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {/* Plan View Modal */}
+                {planViewIdx !== null && planHistory[planViewIdx] && (
+                  <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+                    <div className="bg-gray-900 rounded-xl p-6 max-w-2xl w-full shadow-lg border border-gray-800 relative">
+                      <button
+                        className="absolute top-2 right-2 text-gray-400 hover:text-white text-2xl"
+                        onClick={() => setPlanViewIdx(null)}
+                        aria-label="Close"
+                      >
+                        ×
+                      </button>
+                      <div className="font-bold text-white mb-2 text-lg">{planHistory[planViewIdx].label}</div>
+                      <div className="text-xs text-gray-400 mb-4">{new Date(planHistory[planViewIdx].timestamp).toLocaleString()}</div>
+                      <div className="overflow-y-auto max-h-[60vh] p-2 bg-gray-800 rounded mb-4 prose prose-invert prose-sm prose-pre:bg-transparent prose-pre:p-0 prose-pre:m-0 prose-pre:whitespace-pre-wrap">
+                        <ReactMarkdown>{planHistory[planViewIdx].content}</ReactMarkdown>
+                      </div>
+                      <div className="flex gap-2 justify-end">
+                        <button
+                          className="bg-blue-800 hover:bg-blue-900 text-xs text-white px-3 py-1 rounded font-mono border border-gray-700"
+                          onClick={() => {
+                            setPlanEdit(planHistory[planViewIdx].content);
+                            setPlanViewIdx(null);
+                          }}
+                        >
+                          Copy to Editor
+                        </button>
+                        <button
+                          className="bg-gray-700 hover:bg-gray-800 text-xs text-white px-3 py-1 rounded font-mono border border-gray-700"
+                          onClick={() => setPlanViewIdx(null)}
+                        >
+                          Close
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+              {/* Plan Comparison Button */}
+              <div className="flex gap-2 items-center mb-2">
+                <button
+                  className="text-xs px-2 py-1 rounded bg-gray-700 hover:bg-blue-700 text-white border border-gray-600"
+                  onClick={() => setShowCompareModal(true)}
+                  disabled={planHistory.length < 2 && !currentPlan}
+                  title="Compare two plans side by side"
+                >
+                  Compare Plans
+                </button>
+              </div>
             </div>
-          </section>
+          </div>
+
+          {/* Mission Simulation */}
+          <div className="bg-gray-900/80 rounded-xl p-6 shadow-lg border border-gray-800 min-h-[300px] flex flex-col">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-white font-mono tracking-widest">Mission Simulation</h3>
+              <button
+                className="bg-blue-800 hover:bg-blue-900 text-xs text-white px-3 py-1 rounded font-mono border border-gray-700"
+                onClick={() => setShowSimulationPanel(!showSimulationPanel)}
+              >
+                {showSimulationPanel ? 'Hide' : 'Show'} Timeline
+              </button>
+            </div>
+            {/* Simulation Controls */}
+            <div className="flex flex-wrap gap-2 mb-4">
+              <button
+                className="px-3 py-2 rounded font-mono text-xs font-bold border bg-blue-800 border-blue-600 text-blue-200 hover:bg-blue-700 transition"
+                onClick={startFastSimulation}
+                disabled={controlsDisabled || simulationStarting}
+              >
+                Start Simulation
+              </button>
+              <button
+                className={`px-3 py-2 rounded font-mono text-xs font-bold border transition ${
+                  simulationStatus === 'idle' 
+                    ? 'bg-blue-800 border-blue-600 text-blue-200 hover:bg-blue-700' 
+                    : 'bg-gray-700 border-gray-600 text-gray-300'
+                }`}
+                onClick={startRealTimeSimulation}
+                disabled={controlsDisabled}
+              >
+                Start Real-Time
+              </button>
+              <button
+                className={`px-3 py-2 rounded font-mono text-xs font-bold border transition ${
+                  simulationStatus === 'running' 
+                    ? 'bg-yellow-800 border-yellow-600 text-yellow-200 hover:bg-yellow-700' 
+                    : 'bg-gray-700 border-gray-600 text-gray-300'
+                }`}
+                onClick={pauseSimulation}
+                disabled={controlsDisabled}
+              >
+                Pause
+              </button>
+              <button
+                className={`px-3 py-2 rounded font-mono text-xs font-bold border transition ${
+                  simulationStatus === 'paused' 
+                    ? 'bg-green-800 border-green-600 text-green-200 hover:bg-green-700' 
+                    : 'bg-gray-700 border-gray-600 text-gray-300'
+                }`}
+                onClick={resumeSimulation}
+                disabled={controlsDisabled}
+              >
+                Resume
+              </button>
+              <button
+                className={`px-3 py-2 rounded font-mono text-xs font-bold border transition ${
+                  simulationStatus !== 'idle' 
+                    ? 'bg-red-800 border-red-600 text-red-200 hover:bg-red-700' 
+                    : 'bg-gray-700 border-gray-600 text-gray-300'
+                }`}
+                onClick={stopSimulation}
+                disabled={controlsDisabled}
+              >
+                Stop
+              </button>
+              <button
+                className="px-3 py-2 rounded font-mono text-xs font-bold border bg-purple-800 border-purple-600 text-purple-200 hover:bg-purple-700 transition"
+                onClick={stepSimulation}
+                disabled={controlsDisabled}
+              >
+                Step Forward
+              </button>
+              <button
+                className="px-3 py-2 rounded font-mono text-xs font-bold border bg-orange-800 border-orange-600 text-orange-200 hover:bg-orange-700 transition"
+                onClick={() => setShowInjectModal(true)}
+              >
+                Inject Event
+              </button>
+              <button
+                className="px-3 py-2 rounded font-mono text-xs font-bold border bg-gray-700 border-gray-600 text-white hover:bg-gray-800 transition"
+                onClick={() => { setShowReportsModal(true); fetchAAR(); }}
+              >
+                Reports
+              </button>
+            </div>
+            {/* Simulation Status */}
+            <div className="grid grid-cols-2 gap-4 mb-4 text-sm">
+              <div className="bg-gray-800/50 p-3 rounded border border-gray-700">
+                <div className="text-gray-400 font-mono">Status</div>
+                <div className={`font-bold ${simulationStatus === 'running' ? 'text-green-400' : simulationStatus === 'paused' ? 'text-yellow-400' : simulationStatus === 'completed' ? 'text-blue-400' : 'text-gray-400'}`}>
+                  {simulationStatus.toUpperCase()}
+                </div>
+              </div>
+              <div className="bg-gray-800/50 p-3 rounded border border-gray-700">
+                <div className="text-gray-400 font-mono">Time</div>
+                <div className="font-bold text-white">{simulationTime}</div>
+              </div>
+              <div className="bg-gray-800/50 p-3 rounded border border-gray-700">
+                <div className="text-gray-400 font-mono">Duration</div>
+                <div className="font-bold text-white">{simulationDuration} min</div>
+              </div>
+              <div className="bg-gray-800/50 p-3 rounded border border-gray-700">
+                <div className="text-gray-400 font-mono">Speed</div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="range"
+                    min="1"
+                    max="60"
+                    value={simulationSpeed}
+                    onChange={(e) => updateFastSimulationSpeed(Number(e.target.value))}
+                    className="flex-1"
+                  />
+                  <span className="text-xs text-white">{simulationSpeed}s</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Simulation Timeline */}
+            {showSimulationPanel && (
+              <div className="bg-gray-800/50 rounded border border-gray-700 p-6 max-h-96 overflow-y-auto relative z-30">
+                <h4 className="font-bold text-white mb-4 font-mono tracking-widest text-lg">Timeline</h4>
+                {simulationStarting && (
+                  <div className="flex items-center justify-center gap-2 text-blue-400 mb-4 animate-pulse">
+                    <svg className="w-5 h-5 animate-spin" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
+                    </svg>
+                    <span>Starting simulation...</span>
+                  </div>
+                )}
+                {timelineLoading && simulationStatus === 'running' && (
+                  <div className="flex items-center justify-center gap-2 text-blue-400 mb-4 animate-pulse">
+                    <svg className="w-5 h-5 animate-spin" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
+                    </svg>
+                    <span>Waiting for next event...</span>
+                  </div>
+                )}
+                {bufferedTimeline.length > 0 ? (
+                  <div className="space-y-3">
+                    {bufferedTimeline.slice().reverse().map((event, index) => (
+                      <div key={index} className="bg-gray-700/50 p-4 rounded border-l-4 border-blue-500 hover:bg-gray-700/70 transition-colors">
+                        <div className="flex items-center gap-3 mb-2">
+                          <span className="text-sm font-bold text-blue-400 font-mono">{event.time}</span>
+                          <span className={`px-3 py-1 rounded text-sm font-bold ${
+                            event.type === 'asset' ? 'bg-green-700' : 
+                            event.type === 'threat' ? 'bg-red-700' : 
+                            event.type === 'weather' ? 'bg-blue-700' : 'bg-gray-700'
+                          }`}>
+                            {event.type.toUpperCase()}
+                          </span>
+                        </div>
+                        <div className="text-base text-white leading-relaxed">{event.narrative}</div>
+                        {event.details && (
+                          <details className="mt-3">
+                            <summary className="text-sm text-gray-400 cursor-pointer hover:text-gray-300 font-medium">Details</summary>
+                            <pre className="text-sm text-gray-300 mt-2 bg-gray-800 p-3 rounded overflow-x-auto border border-gray-600">
+                              {JSON.stringify(event.details, null, 2)}
+                            </pre>
+                          </details>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-gray-500 italic text-center py-12 text-lg">No simulation events yet. Start the simulation to see the timeline.</div>
+                )}
+              </div>
+            )}
+          </div>
         </main>
 
         {/* Bottom Section - Logs & Intel and SITREP side by side */}
