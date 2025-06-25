@@ -17,17 +17,26 @@ interface Incident {
   assigned_units: string[];
 }
 
+interface Unit {
+  id: string;
+  position: { lat: number; lng: number };
+  status: string;
+  name: string;
+  destination?: { lat: number; lng: number };
+}
+
 const BACKEND_URL = 'http://localhost:8000';
 
 // Test data for demo map
-const TEST_UNITS = [
+const TEST_INCIDENTS = [
+  { incident_id: 'hazard1', type: 'Hazard', priority: 'high', location: { lat: 33.6411, lng: -117.9187 }, status: 'new', description: 'Chemical spill reported', created_at: new Date().toISOString(), assigned_units: [] },
+];
+
+const INITIAL_UNITS = [
   { id: 'unit1', position: { lat: 33.646, lng: -117.918 }, status: 'ready', name: 'Unit 1' },
   { id: 'unit2', position: { lat: 33.638, lng: -117.926 }, status: 'ready', name: 'Unit 2' },
   { id: 'unit3', position: { lat: 33.635, lng: -117.912 }, status: 'ready', name: 'Unit 3' },
   { id: 'unit4', position: { lat: 33.642, lng: -117.930 }, status: 'ready', name: 'Unit 4' },
-];
-const TEST_INCIDENTS = [
-  { incident_id: 'hazard1', type: 'Hazard', priority: 'high', location: { lat: 33.6411, lng: -117.9187 }, status: 'new', description: 'Chemical spill reported', created_at: new Date().toISOString(), assigned_units: [] },
 ];
 
 export default function IncidentManagement() {
@@ -42,7 +51,7 @@ export default function IncidentManagement() {
   const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null);
   const [selectedIncidentId, setSelectedIncidentId] = useState<string | null>(null);
   const [mapCenter, setMapCenter] = useState<{ lat: number; lng: number }>({ lat: 33.6411, lng: -117.9187 });
-  const [mapZoom, setMapZoom] = useState(14);
+  const [mapZoom, setMapZoom] = useState(16);
   const mapRef = useRef<any>(null);
   
   // Form states
@@ -67,6 +76,8 @@ export default function IncidentManagement() {
 
   // Accessibility: focus modal on open
   const modalRef = useRef<HTMLDivElement>(null);
+
+  const [units, setUnits] = useState<Unit[]>(INITIAL_UNITS);
 
   useEffect(() => {
     fetchIncidents();
@@ -138,12 +149,32 @@ export default function IncidentManagement() {
         setSelectedIncident(null);
         setDispatchUnit("");
         fetchIncidents();
+        setUnits(prevUnits => prevUnits.map(u =>
+          u.name === dispatchUnit
+            ? { ...u, status: 'dispatched', destination: selectedIncident.location }
+            : u
+        ));
       } else {
         notify.error("Failed to dispatch unit");
       }
     } catch (error) {
       notify.error("Failed to dispatch unit");
     }
+  };
+
+  const handleRemoveUnitFromIncident = async (incident: Incident, unitName: string) => {
+    // Remove from backend if needed (not shown here)
+    // Remove from frontend state
+    setIncidents(prev => prev.map(i =>
+      i.incident_id === incident.incident_id
+        ? { ...i, assigned_units: i.assigned_units.filter(u => u !== unitName) }
+        : i
+    ));
+    setUnits(prevUnits => prevUnits.map(u =>
+      u.name === unitName && u.destination && incident.location && u.status === 'dispatched'
+        ? { ...u, status: 'ready', destination: undefined }
+        : u
+    ));
   };
 
   const resolveIncident = async (incidentId: string) => {
@@ -156,6 +187,15 @@ export default function IncidentManagement() {
       
       if (response.ok) {
         notify.success("Incident resolved");
+        // Clear all units dispatched to this incident
+        const incident = incidents.find(i => i.incident_id === incidentId);
+        if (incident) {
+          setUnits(prevUnits => prevUnits.map(u =>
+            incident.assigned_units.includes(u.name)
+              ? { ...u, status: 'ready', destination: undefined }
+              : u
+          ));
+        }
         fetchIncidents();
       } else {
         notify.error("Failed to resolve incident");
@@ -193,6 +233,16 @@ export default function IncidentManagement() {
       case "resolved": return "text-green-400 bg-green-900/20";
       default: return "text-gray-400 bg-gray-900/20";
     }
+  };
+
+  // Helper to normalize priority to 1-4
+  const getPriorityNumber = (priority: string) => {
+    if (priority === 'high') return 1;
+    if (priority === 'medium') return 2;
+    if (priority === 'low') return 4;
+    const n = parseInt(priority, 10);
+    if ([1,2,3,4].includes(n)) return n;
+    return 4;
   };
 
   // Table row click handler
@@ -271,9 +321,9 @@ export default function IncidentManagement() {
 
       {/* Map for Costa Mesa, CA with test data */}
       <div className="flex justify-center mt-6 mb-8">
-        <div style={{ width: '500px', height: '300px', borderRadius: '16px', overflow: 'hidden', boxShadow: '0 2px 12px #0006' }}>
+        <div style={{ width: '700px', height: '420px', borderRadius: '16px', overflow: 'hidden', boxShadow: '0 2px 12px #0006' }}>
           <GoogleOpsMap
-            units={TEST_UNITS}
+            units={units}
             incidents={mapIncidents}
             center={mapCenter}
             zoom={mapZoom}
@@ -349,8 +399,8 @@ export default function IncidentManagement() {
                       </td>
                       <td className="px-6 py-4 text-[#F3F3E7]">{incident.type}</td>
                       <td className="px-6 py-4">
-                        <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getPriorityColor(incident.priority)}`}>
-                          {incident.priority}
+                        <span className="px-2 py-1 rounded-full text-xs font-semibold">
+                          {getPriorityNumber(incident.priority)}
                         </span>
                       </td>
                       <td className="px-6 py-4">
@@ -519,8 +569,8 @@ export default function IncidentManagement() {
               className="w-full px-4 py-2 bg-[#181A1B] border border-[#A3B18A] rounded-lg text-[#F3F3E7] mb-4"
             >
               <option value="">Select Unit</option>
-              {availableUnits.map(unit => (
-                <option key={unit} value={unit}>{unit}</option>
+              {units.map(unit => (
+                <option key={unit.id} value={unit.name}>{unit.name}</option>
               ))}
             </select>
             <div className="flex gap-3">
@@ -577,8 +627,8 @@ export default function IncidentManagement() {
               {/* Priority */}
               <div className="flex items-center gap-2">
                 <span className="text-[#A3B18A] font-semibold w-24">Priority:</span>
-                <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getPriorityColor(selectedIncident.priority)}`}>
-                  {selectedIncident.priority}
+                <span className="px-2 py-1 rounded-full text-xs font-semibold">
+                  {getPriorityNumber(selectedIncident.priority)}
                 </span>
               </div>
 
@@ -630,8 +680,18 @@ export default function IncidentManagement() {
                 {selectedIncident.assigned_units && selectedIncident.assigned_units.length > 0 ? (
                   <div className="flex flex-wrap gap-2">
                     {selectedIncident.assigned_units.map((unit, index) => (
-                      <span key={index} className="px-2 py-1 bg-[#A3B18A]/20 text-[#A3B18A] rounded text-sm">
+                      <span key={index} className="px-2 py-1 bg-[#A3B18A]/20 text-[#A3B18A] rounded text-sm flex items-center gap-1">
                         {unit}
+                        <button
+                          className="ml-1 text-red-400 hover:text-red-600 text-xs font-bold"
+                          title="Remove unit from incident"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleRemoveUnitFromIncident(selectedIncident, unit);
+                          }}
+                        >
+                          ✕
+                        </button>
                       </span>
                     ))}
                   </div>

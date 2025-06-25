@@ -1,4 +1,4 @@
-from fastapi import FastAPI, File, UploadFile, Form, Request, Body
+from fastapi import FastAPI, File, UploadFile, Form, Request, Body, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from typing import List, Dict, Any, Optional
@@ -15,6 +15,7 @@ import random
 from enum import Enum
 import httpx
 from urllib.parse import quote
+from pydantic import BaseModel
 
 # Load environment variables from .env file
 load_dotenv()
@@ -29,7 +30,7 @@ client = openai.OpenAI(api_key=openai_api_key)
 # Allow CORS for local frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:3001"],
+    allow_origins=["*"],  # Or restrict to ["http://localhost:3000", "http://localhost:3002"]
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -42,6 +43,7 @@ class SimulationStatus(Enum):
     PAUSED = "paused"
     COMPLETED = "completed"
     ERROR = "error"
+    STALLED = "stalled"
 
 class EventType(Enum):
     MISSION_START = "mission_start"
@@ -628,8 +630,15 @@ def initialize_threats(mission_plan: str) -> Dict[str, Any]:
     
     return threats
 
+# Add a counter for consecutive weather-only steps
+stall_counter = 0
+STALL_LIMIT = 5  # Number of consecutive weather-only steps before considering the mission stalled
+
+def all_objectives_complete():
+    return simulation_state["objectives"] and all(obj.get("status") == "complete" for obj in simulation_state["objectives"])
+
 async def run_simulation_step():
-    """Execute one step of the simulation (TEST MODE: always generate events)"""
+    global stall_counter
     print("[DEBUG] Starting simulation step...")
     if simulation_state["status"] != SimulationStatus.RUNNING:
         print("[DEBUG] Simulation not running, skipping step.")
@@ -639,17 +648,13 @@ async def run_simulation_step():
         current_minutes += 5  # Advance 5 minutes
         simulation_state["current_time"] = format_time(current_minutes)
         simulation_state["mission_duration"] += 5
-        
-        # Generate events based on current state (always generate for testing)
         events = []
-        
+        non_weather_event = False
         # Asset movement events (always move)
         for asset_id, asset in simulation_state["assets"].items():
-            # Simple movement logic
             new_lat = asset["position"]["lat"] + random.uniform(-0.001, 0.001)
             new_lng = asset["position"]["lng"] + random.uniform(-0.001, 0.001)
             asset["position"] = {"lat": new_lat, "lng": new_lng}
-            
             event = create_simulation_event(
                 EventType.ASSET_MOVEMENT,
                 simulation_state["current_time"],
@@ -660,13 +665,19 @@ async def run_simulation_step():
                 }
             )
             events.append(event)
-        
+            non_weather_event = True
+            # Check for reach_location objectives
+            for obj in simulation_state["objectives"]:
+                if obj.get("type") == "reach_location" and obj.get("status") != "complete":
+                    target = obj.get("target")
+                    if target and abs(asset["position"]["lat"] - target["lat"]) < 0.0005 and abs(asset["position"]["lng"] - target["lng"]) < 0.0005:
+                        obj["status"] = "complete"
+                        log_event("Simulation", f"Objective complete: {obj.get('description', 'reach_location')}", {"objective": obj})
         # Threat detection events (always detect if not already detected)
         for threat_id, threat in simulation_state["threats"].items():
             if not threat["detected"]:
                 threat["detected"] = True
                 threat["status"] = "detected"
-                
                 event = create_simulation_event(
                     EventType.THREAT_DETECTED,
                     simulation_state["current_time"],
@@ -677,29 +688,45 @@ async def run_simulation_step():
                     }
                 )
                 events.append(event)
-        
-        # Weather changes (always change)
-        weather_conditions = ["clear", "cloudy", "rain", "fog"]
-        simulation_state["weather"]["condition"] = random.choice(weather_conditions)
-        event = create_simulation_event(
-            EventType.WEATHER_CHANGE,
-            simulation_state["current_time"],
-            {
-                "condition": simulation_state["weather"]["condition"],
-                "visibility": simulation_state["weather"]["visibility"]
-            }
-        )
-        events.append(event)
-        
+                non_weather_event = True
+        # Weather changes: Only at beginning and midway
+        mission_duration = simulation_state["mission_duration"]
+        total_duration = 120  # Example: 2 hours = 120 minutes
+        if mission_duration == 5 or mission_duration == total_duration // 2:
+            weather_conditions = ["clear", "cloudy", "rain", "fog"]
+            simulation_state["weather"]["condition"] = random.choice(weather_conditions)
+            event = create_simulation_event(
+                EventType.WEATHER_CHANGE,
+                simulation_state["current_time"],
+                {
+                    "condition": simulation_state["weather"]["condition"],
+                    "visibility": simulation_state["weather"]["visibility"]
+                }
+            )
+            events.append(event)
         # Add events to timeline
         simulation_state["timeline"].extend(events)
-        
         # Log events
         for event in events:
             log_event("Simulation", event["narrative"], event["details"])
-        
-        # Check for mission completion (example: 2 hours = 120 minutes)
-        if simulation_state["mission_duration"] >= 120:
+        # After all event logic, check for flexible completion
+        if all_objectives_complete():
+            simulation_state["status"] = SimulationStatus.COMPLETED
+            completion_event = create_simulation_event(
+                EventType.OBJECTIVE_COMPLETE,
+                simulation_state["current_time"],
+                {"status": "all_objectives_completed", "duration": simulation_state["mission_duration"]}
+            )
+            simulation_state["timeline"].append(completion_event)
+            log_event("Simulation", "Mission completed: all objectives complete", {"duration": simulation_state["mission_duration"]})
+            generate_after_action_report()
+            stall_counter = 0
+            print("[DEBUG] Mission completed: all objectives complete.")
+            # Stop all simulation processes and reset to idle
+            await stop_simulation_processes()
+            return
+        # Fallback: time-based completion
+        if simulation_state["mission_duration"] >= total_duration:
             simulation_state["status"] = SimulationStatus.COMPLETED
             completion_event = create_simulation_event(
                 EventType.OBJECTIVE_COMPLETE,
@@ -707,7 +734,22 @@ async def run_simulation_step():
                 {"status": "mission_completed", "duration": simulation_state["mission_duration"]}
             )
             simulation_state["timeline"].append(completion_event)
-            log_event("Simulation", "Mission completed", {"duration": simulation_state["mission_duration"]})
+            log_event("Simulation", "Mission completed (time limit)", {"duration": simulation_state["mission_duration"]})
+            generate_after_action_report()
+            stall_counter = 0
+            print("[DEBUG] Mission completed: time limit.")
+            # Stop all simulation processes and reset to idle
+            await stop_simulation_processes()
+            return
+        # Stall detection: if only weather events are generated for N steps
+        if not non_weather_event:
+            stall_counter += 1
+            print(f"[DEBUG] Stall counter: {stall_counter}")
+            if stall_counter >= STALL_LIMIT:
+                simulation_state["status"] = SimulationStatus.STALLED
+                log_event("Simulation", "Simulation stalled: only weather events generated for several steps.")
+        else:
+            stall_counter = 0
         print("[DEBUG] Finished simulation step.")
     except Exception as e:
         print(f"[ERROR] Exception in simulation step: {e}")
@@ -803,7 +845,7 @@ async def step_simulation():
 @app.post("/api/simulation/inject")
 async def inject_event(body: dict = Body(...)):
     """Inject a user-defined event into the simulation and ensure the simulation loop continues."""
-    global simulation_task
+    global simulation_task, fast_simulation_speed
     try:
         event_description = body.get("description", "")
         event_type = body.get("type", "user_injected")
@@ -824,11 +866,22 @@ async def inject_event(body: dict = Body(...)):
         if simulation_state["status"] == SimulationStatus.PAUSED:
             simulation_state["status"] = SimulationStatus.RUNNING
             if simulation_task is None or simulation_task.done():
-                simulation_task = asyncio.create_task(run_real_time_simulation())
+                # Determine which loop to restart
+                if fast_simulation_speed and fast_simulation_speed != 5:
+                    # Fast simulation mode
+                    loop = asyncio.get_event_loop()
+                    simulation_task = loop.create_task(run_simulation_loop(fast_simulation_speed))
+                else:
+                    # Real-time simulation mode
+                    simulation_task = asyncio.create_task(run_real_time_simulation())
         elif simulation_state["status"] == SimulationStatus.IDLE:
             simulation_state["status"] = SimulationStatus.RUNNING
             if simulation_task is None or simulation_task.done():
-                simulation_task = asyncio.create_task(run_real_time_simulation())
+                if fast_simulation_speed and fast_simulation_speed != 5:
+                    loop = asyncio.get_event_loop()
+                    simulation_task = loop.create_task(run_simulation_loop(fast_simulation_speed))
+                else:
+                    simulation_task = asyncio.create_task(run_real_time_simulation())
         # If already running, do nothing (loop will pick up event)
 
         return {
@@ -853,7 +906,9 @@ async def get_simulation_status():
         "weather": simulation_state["weather"],
         "comms_status": simulation_state["comms_status"],
         "timeline": simulation_state["timeline"][-10:],  # Last 10 events
-        "user_injections": simulation_state["user_injections"]
+        "user_injections": simulation_state["user_injections"],
+        "stall_counter": stall_counter,
+        "stall_limit": STALL_LIMIT
     }
 
 @app.get("/api/simulation/timeline")
@@ -1246,6 +1301,137 @@ Return as JSON:
         
     except Exception as e:
         return {"status": "error", "message": str(e)}
+
+def generate_after_action_report():
+    # Aggregate timeline, objectives, and key events
+    timeline = simulation_state["timeline"]
+    objectives = simulation_state.get("objectives", [])
+    mission_name = (master_plan.get("label") if master_plan and master_plan.get("label") else current_plan.get("label") if current_plan and current_plan.get("label") else "Unnamed Mission")
+    # Simple summary (could be replaced with AI summary)
+    summary = f"Mission: {mission_name}\nTotal Events: {len(timeline)}\nObjectives: {objectives}\nKey Events:\n"
+    for event in timeline:
+        summary += f"- {event['time']}: {event['narrative']}\n"
+    simulation_state["aar"] = {"mission_name": mission_name, "summary": summary}
+    log_event("AAR", "After Action Report generated", {"summary": summary})
+
+@app.get("/api/reports/aar")
+async def get_aar():
+    """Get the After Action Report for the current mission"""
+    aar = simulation_state.get("aar", None)
+    if aar:
+        return {"status": "success", "aar": aar}
+    else:
+        return {"status": "error", "message": "No AAR available"}
+
+async def stop_simulation_processes():
+    """Stop all simulation processes and reset state to idle"""
+    global simulation_task
+    print("[DEBUG] Stopping all simulation processes...")
+    
+    # Cancel the simulation task if it's running
+    if simulation_task and not simulation_task.done():
+        simulation_task.cancel()
+        try:
+            await simulation_task
+        except asyncio.CancelledError:
+            pass
+        simulation_task = None
+    
+    # Reset simulation state to idle
+    simulation_state["status"] = SimulationStatus.IDLE
+    print("[DEBUG] Simulation processes stopped, state reset to idle.")
+
+# --- Incident Management State ---
+incident_router = APIRouter()
+
+class IncidentStatus(str, Enum):
+    NEW = "new"
+    DISPATCHED = "dispatched"
+    RESOLVED = "resolved"
+
+class Incident(BaseModel):
+    incident_id: str
+    type: str
+    priority: str
+    location: dict  # {"lat": float, "lng": float} or grid string
+    status: IncidentStatus = IncidentStatus.NEW
+    description: Optional[str] = ""
+    created_at: str
+    resolved_at: Optional[str] = None
+    assigned_units: Optional[list] = []
+
+# In-memory incident store (replace with DB for production)
+incidents = {}
+
+# --- Incident Endpoints ---
+@incident_router.post("/api/incidents")
+async def create_incident(body: dict = Body(...)):
+    import uuid, datetime
+    incident_id = str(uuid.uuid4())
+    now = datetime.datetime.utcnow().isoformat() + 'Z'
+    incident = Incident(
+        incident_id=incident_id,
+        type=body.get("type", "unknown"),
+        priority=body.get("priority", "medium"),
+        location=body.get("location", {}),
+        status=IncidentStatus.NEW,
+        description=body.get("description", ""),
+        created_at=now,
+        assigned_units=[]
+    )
+    incidents[incident_id] = incident
+    log_event("Incident", f"Incident created: {incident.type}", {"incident_id": incident_id})
+    return {"status": "success", "incident": incident}
+
+@incident_router.get("/api/incidents")
+async def list_incidents(status: Optional[str] = None):
+    # List all or filter by status
+    if status:
+        filtered = [i for i in incidents.values() if i.status == status]
+    else:
+        filtered = list(incidents.values())
+    return {"incidents": filtered}
+
+@incident_router.patch("/api/incidents/{incident_id}")
+async def update_incident(incident_id: str, body: dict = Body(...)):
+    import datetime
+    incident = incidents.get(incident_id)
+    if not incident:
+        return {"status": "error", "message": "Incident not found"}
+    # Update fields
+    for field in ["type", "priority", "location", "status", "description", "assigned_units"]:
+        if field in body:
+            setattr(incident, field, body[field])
+    if body.get("status") == IncidentStatus.RESOLVED:
+        incident.resolved_at = datetime.datetime.utcnow().isoformat() + 'Z'
+    incidents[incident_id] = incident
+    log_event("Incident", f"Incident updated: {incident_id}", {"status": incident.status})
+    return {"status": "success", "incident": incident}
+
+# --- Dispatch Endpoint ---
+@incident_router.post("/api/dispatch")
+async def dispatch_unit(body: dict = Body(...)):
+    incident_id = body.get("incident_id")
+    unit_id = body.get("unit_id")
+    incident = incidents.get(incident_id)
+    if not incident:
+        return {"status": "error", "message": "Incident not found"}
+    if unit_id not in incident.assigned_units:
+        incident.assigned_units.append(unit_id)
+    incident.status = IncidentStatus.DISPATCHED
+    incidents[incident_id] = incident
+    log_event("Dispatch", f"Unit {unit_id} dispatched to incident {incident_id}", {"incident_id": incident_id, "unit_id": unit_id})
+    return {"status": "success", "incident": incident}
+
+# Register router
+app.include_router(incident_router)
+
+@app.get("/api/assets")
+async def get_assets():
+    """Get current asset pool with status and position"""
+    return {
+        "assets": simulation_state["assets"]
+    }
 
 if __name__ == "__main__":
     import uvicorn
