@@ -476,13 +476,15 @@ export default function IncidentManagement() {
                   className="flex-1 px-4 py-2 bg-[#181A1B] border border-[#A3B18A] rounded-lg text-[#F3F3E7]"
                 />
                 {/* Icon preview for type */}
-                {newIncident.type && (
-                  <img
-                    src={newIncident.type.toLowerCase() === 'hazard' ? '/hazard-icon.svg' : '/incident-icon.svg'}
-                    alt="Incident Icon Preview"
-                    className="w-8 h-8"
-                  />
-                )}
+                {newIncident.type &&
+                  (['hazard', 'shooting', 'fire', 'accident'].includes(newIncident.type.toLowerCase()) ? (
+                    <img
+                      src={newIncident.type.toLowerCase() === 'hazard' ? '/hazard-icon.svg' : '/incident-icon.svg'}
+                      alt="Incident Icon Preview"
+                      className="w-8 h-8"
+                    />
+                  ) : null)
+                }
               </div>
               {/* Priority 1-4 Dropdown */}
               <div>
