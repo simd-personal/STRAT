@@ -126,10 +126,6 @@ export default function GoogleOpsMap({
               fontWeight: 'bold',
               fontSize: '14px',
             }}
-            icon={{
-              url: '/car-icon.svg',
-              scaledSize: typeof window !== 'undefined' && window.google ? new window.google.maps.Size(32, 32) : undefined,
-            }}
           />
         ))}
         {/* Draw incident markers */}
