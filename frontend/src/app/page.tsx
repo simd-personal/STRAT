@@ -13,12 +13,6 @@ export default function LandingPage() {
           </div>
           <span className="text-2xl font-bold tracking-widest font-sans">STRATOS</span>
         </div>
-        <Link
-          href="/app"
-          className="px-7 py-2 border-2 border-[#F3F3E7] rounded-lg font-semibold text-[#F3F3E7] hover:bg-[#A3B18A] hover:text-[#181A1B] transition-colors duration-200 text-lg tracking-wide"
-        >
-          Get Started
-        </Link>
       </nav>
 
       {/* Hero Section */}
@@ -57,6 +51,21 @@ export default function LandingPage() {
           >
             <span className="relative z-10">LEARN MORE</span>
             <span className="absolute inset-0 border border-[#F3F3E7] rounded-lg opacity-40 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none"></span>
+          </Link>
+        </div>
+        {/* Centered action buttons below Learn More */}
+        <div className="mt-6 flex justify-center gap-4 w-full">
+          <Link
+            href="/app"
+            className="px-5 py-2 border-2 border-[#F3F3E7] rounded-lg font-semibold text-[#F3F3E7] hover:bg-[#A3B18A] hover:text-[#181A1B] transition-colors duration-200 text-base tracking-wide"
+          >
+            Get Started
+          </Link>
+          <Link
+            href="/first-responder-portal"
+            className="px-5 py-2 border-2 border-[#F3F3E7] rounded-lg font-semibold text-[#F3F3E7] hover:bg-[#A3B18A] hover:text-[#181A1B] transition-colors duration-200 text-base tracking-wide"
+          >
+            First Responder Portal
           </Link>
         </div>
       </main>

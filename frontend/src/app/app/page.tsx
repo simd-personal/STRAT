@@ -136,6 +136,9 @@ export default function Home() {
   // Add state for units
   const [units, setUnits] = useState<any[]>([]);
 
+  // Add new state for injecting event
+  const [injectingEvent, setInjectingEvent] = useState(false);
+
   // Fetch units from /api/assets
   useEffect(() => {
     const fetchUnits = async () => {
@@ -143,7 +146,7 @@ export default function Home() {
         const response = await fetch('http://localhost:8000/api/assets');
         const data = await response.json();
         // Convert asset object to array with id
-        const arr = Object.entries(data.assets || {}).map(([id, asset]) => ({ ...asset, id }));
+        const arr = Object.entries(data.assets || {}).map(([id, asset]) => (typeof asset === 'object' && asset !== null ? { ...asset, id } : { id }));
         setUnits(arr);
       } catch (error) {
         console.error('Failed to fetch units:', error);
@@ -636,6 +639,7 @@ export default function Home() {
 
   const injectEvent = async () => {
     if (!injectEventDescription.trim()) return;
+    setInjectingEvent(true);
     try {
       const response = await fetch(`${BACKEND_URL}/api/simulation/inject`, {
         method: 'POST',
@@ -651,6 +655,8 @@ export default function Home() {
       }
     } catch (error) {
       notify.error('Error injecting event');
+    } finally {
+      setInjectingEvent(false);
     }
   };
 
@@ -1493,11 +1499,17 @@ export default function Home() {
                 Cancel
               </button>
               <button
-                className="bg-orange-800 hover:bg-orange-700 text-white px-4 py-2 rounded font-mono text-sm"
+                className="bg-orange-800 hover:bg-orange-700 text-white px-4 py-2 rounded font-mono text-sm flex items-center justify-center min-w-[120px]"
                 onClick={injectEvent}
-                disabled={!injectEventDescription.trim()}
+                disabled={!injectEventDescription.trim() || injectingEvent}
               >
-                Inject Event
+                {injectingEvent ? (
+                  <svg className="animate-spin h-5 w-5 mr-2 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+                  </svg>
+                ) : null}
+                {injectingEvent ? 'Injecting...' : 'Inject Event'}
               </button>
             </div>
           </div>
