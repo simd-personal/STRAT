@@ -205,12 +205,22 @@ export default function IncidentManagement() {
     }
   };
 
+  // Move this helper function up
+  const getPriorityNumber = (priority: string) => {
+    if (priority === 'high') return 1;
+    if (priority === 'medium') return 2;
+    if (priority === 'low') return 4;
+    const n = parseInt(priority, 10);
+    if ([1,2,3,4].includes(n)) return n;
+    return 4;
+  };
+
   const filteredIncidents = incidents
     .slice()
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
     .filter(incident => {
       if (statusFilter && incident.status !== statusFilter) return false;
-      if (priorityFilter && incident.priority !== priorityFilter) return false;
+      if (priorityFilter && String(getPriorityNumber(incident.priority)) !== priorityFilter) return false;
       return true;
     });
 
@@ -233,16 +243,6 @@ export default function IncidentManagement() {
       case "resolved": return "text-green-400 bg-green-900/20";
       default: return "text-gray-400 bg-gray-900/20";
     }
-  };
-
-  // Helper to normalize priority to 1-4
-  const getPriorityNumber = (priority: string) => {
-    if (priority === 'high') return 1;
-    if (priority === 'medium') return 2;
-    if (priority === 'low') return 4;
-    const n = parseInt(priority, 10);
-    if ([1,2,3,4].includes(n)) return n;
-    return 4;
   };
 
   // Table row click handler
