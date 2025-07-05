@@ -72,26 +72,28 @@ export default function ResponderPortalContent() {
     fetchIncidents();
   }, [unit]);
 
+  // Fetch unit location when en route to an incident
+  const fetchUnitLocation = async () => {
+    const response = await fetch(`${BACKEND_URL}/api/units/${unit}`);
+    const data = await response.json();
+    if (data.unit && data.unit.current_location) {
+      setUnitLocation(data.unit.current_location);
+    } else {
+      setUnitLocation(null);
+    }
+  };
+
+  useEffect(() => {
+    fetchUnitLocation();
+  }, [unit]);
+
   // Handle real-time updates from WebSocket
   useEffect(() => {
     if (lastMessage && lastMessage.type === 'incident_update') {
       fetchIncidents(); // Refresh incidents when we get an update
+      fetchUnitLocation(); // <-- Also refresh unit location for real-time route update
     }
   }, [lastMessage]);
-
-  // Fetch unit location when en route to an incident
-  useEffect(() => {
-    const fetchUnitLocation = async () => {
-      const response = await fetch(`${BACKEND_URL}/api/units/${unit}`);
-      const data = await response.json();
-      if (data.unit && data.unit.current_location) {
-        setUnitLocation(data.unit.current_location);
-      } else {
-        setUnitLocation(null);
-      }
-    };
-    fetchUnitLocation();
-  }, [unit]);
 
   const fetchIncidents = async () => {
     setLoading(true);

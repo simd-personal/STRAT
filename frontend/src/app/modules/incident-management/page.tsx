@@ -229,6 +229,9 @@ export default function IncidentManagement() {
       setSelectedIncident(null);
       setDispatchUnits([]);
       fetchIncidents();
+      fetchUnits();
+      setMapCenter(selectedIncident.location);
+      setMapZoom(16);
     } catch (error) {
       notify.error("Failed to dispatch units");
     }
@@ -399,6 +402,11 @@ export default function IncidentManagement() {
       notify.error('Failed to update incident');
     }
   };
+
+  // Debug: Log units whenever they change
+  useEffect(() => {
+    console.log("Units for map:", units);
+  }, [units]);
 
   return (
     <div className="min-h-screen bg-[#181A1B] text-[#F3F3E7] font-sans">

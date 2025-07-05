@@ -31,7 +31,7 @@ export default function GoogleOpsMap({
   missionLocation?: { lat: number; lng: number } | null;
 }) {
   const { isLoaded } = useJsApiLoader({
-    googleMapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY!,
+    googleMapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || '',
     libraries: ['places'],
   });
 
@@ -39,6 +39,10 @@ export default function GoogleOpsMap({
   const [directions, setDirections] = useState<{ [unitId: string]: any }>({});
 
   useEffect(() => {
+    // Debug: Log dispatched units and their destinations
+    const dispatchedUnits = units.filter(u => u.status === 'dispatched' && u.destination);
+    console.log('Dispatched units with destinations:', dispatchedUnits);
+    
     // Clear directions for units that are no longer dispatched
     setDirections(prev => {
       const newDirections: { [unitId: string]: any } = {};
@@ -52,12 +56,20 @@ export default function GoogleOpsMap({
   }, [units]);
 
   const handleDirectionsCallback = (unitId: string, result: any, status: any) => {
+    console.log(`Directions callback for unit ${unitId}:`, { status, result });
     if (status === 'OK' && result) {
       setDirections(prev => ({ ...prev, [unitId]: result }));
+    } else {
+      console.error(`Failed to get directions for unit ${unitId}:`, status);
     }
   };
 
   if (!isLoaded) return <div>Loading Map...</div>;
+  
+  // Show warning if Google Maps API key is not available
+  if (!process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY) {
+    console.warn('Google Maps API key not found. Directions will show as straight lines.');
+  }
 
   return (
     <div className="map-container" style={{ position: 'relative', zIndex: 1, contain: 'layout' }}>
@@ -87,7 +99,7 @@ export default function GoogleOpsMap({
         {/* Draw real routes for dispatched units */}
         {units.filter(u => u.status === 'dispatched' && u.destination).map((unit, idx) => (
           <React.Fragment key={unit.id}>
-            {!directions[unit.id] && (
+            {!directions[unit.id] && process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY && (
               <DirectionsService
                 key={`ds-${unit.id}`}
                 options={{
@@ -110,6 +122,19 @@ export default function GoogleOpsMap({
                     zIndex: 2,
                   },
                   suppressMarkers: true,
+                }}
+              />
+            )}
+            {/* Fallback: Simple straight line when no directions available */}
+            {!directions[unit.id] && (
+              <Polyline
+                key={`fallback-${unit.id}`}
+                path={[unit.position, unit.destination]}
+                options={{
+                  strokeColor: '#FF6B6B',
+                  strokeOpacity: 0.7,
+                  strokeWeight: 3,
+                  zIndex: 1,
                 }}
               />
             )}

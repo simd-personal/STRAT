@@ -1500,6 +1500,13 @@ async def update_incident(incident_id: str, body: dict = Body(...)):
     if body.get("status") == IncidentStatus.RESOLVED:
         incident.resolved_at = datetime.datetime.utcnow().isoformat() + 'Z'
         changes["resolved_at"] = incident.resolved_at
+        
+        # Clear destinations for all units assigned to this incident
+        for unit_id in incident.assigned_units:
+            if unit_id in units:
+                units[unit_id]["status"] = "available"
+                units[unit_id]["destination"] = None
+                units[unit_id]["last_update"] = datetime.datetime.utcnow().isoformat() + 'Z'
     
     incidents[incident_id] = incident
     
@@ -1534,15 +1541,24 @@ async def dispatch_unit(body: dict = Body(...)):
     incident = incidents.get(incident_id)
     if not incident:
         return {"status": "error", "message": "Incident not found"}
+    
+    # Update incident
     if unit_id not in incident.assigned_units:
         incident.assigned_units.append(unit_id)
     incident.status = IncidentStatus.DISPATCHED
     incidents[incident_id] = incident
     
+    # Update unit status and destination
+    if unit_id in units:
+        units[unit_id]["status"] = "dispatched"
+        units[unit_id]["destination"] = incident.location
+        units[unit_id]["last_update"] = datetime.datetime.utcnow().isoformat() + 'Z'
+    
     # Log the dispatch action
     log_incident_action("dispatched", incident_id, body.get("user", "dispatcher"), {
         "unit_id": unit_id,
-        "status": "dispatched"
+        "status": "dispatched",
+        "destination": incident.location
     })
     
     # Broadcast real-time update

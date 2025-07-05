@@ -1,0 +1,114 @@
+{
+  "simulation_state": {
+    "status": "idle",
+    "current_time": "0600",
+    "mission_duration": 0,
+    "assets": {},
+    "threats": {},
+    "weather": {
+      "condition": "clear",
+      "visibility": "good",
+      "wind_speed": 5,
+      "temperature": 72
+    },
+    "comms_status": "operational",
+    "objectives": [],
+    "timeline": [],
+    "user_injections": []
+  },
+  "mission_data": {
+    "current_plan": {
+      "content": "",
+      "updated_at": null,
+      "updated_by": null
+    },
+    "plan_history": [],
+    "master_plan": null,
+    "sitrep_state": {
+      "content": "",
+      "status": "draft",
+      "version": 1,
+      "history": []
+    },
+    "conops_state": {
+      "content": "",
+      "status": "draft",
+      "version": 1,
+      "history": []
+    },
+    "mission_logs": []
+  },
+  "incident_data": {
+    "incidents": {},
+    "units": {
+      "police-1": {
+        "id": "police-1",
+        "type": "police",
+        "status": "available",
+        "location": {
+          "lat": 40.7128,
+          "lng": -74.006
+        },
+        "destination": null,
+        "last_update": "2025-07-05T20:02:11.514814Z"
+      },
+      "police-2": {
+        "id": "police-2",
+        "type": "police",
+        "status": "available",
+        "location": {
+          "lat": 40.7589,
+          "lng": -73.9851
+        },
+        "destination": null,
+        "last_update": "2025-07-05T20:02:11.515145Z"
+      },
+      "fire-1": {
+        "id": "fire-1",
+        "type": "fire",
+        "status": "available",
+        "location": {
+          "lat": 40.7505,
+          "lng": -73.9934
+        },
+        "destination": null,
+        "last_update": "2025-07-05T20:02:11.515149Z"
+      },
+      "fire-2": {
+        "id": "fire-2",
+        "type": "fire",
+        "status": "available",
+        "location": {
+          "lat": 40.7614,
+          "lng": -73.9776
+        },
+        "destination": null,
+        "last_update": "2025-07-05T20:02:11.515151Z"
+      },
+      "emt-1": {
+        "id": "emt-1",
+        "type": "emt",
+        "status": "available",
+        "location": {
+          "lat": 40.7484,
+          "lng": -73.9857
+        },
+        "destination": null,
+        "last_update": "2025-07-05T20:02:11.515154Z"
+      },
+      "emt-2": {
+        "id": "emt-2",
+        "type": "emt",
+        "status": "available",
+        "location": {
+          "lat": 40.7549,
+          "lng": -73.984
+        },
+        "destination": null,
+        "last_update": "2025-07-05T20:02:11.515156Z"
+      }
+    },
+    "incident_actions": []
+  },
+  "reset_timestamp": "2025-07-05T20:02:11.515164Z"
+}
