@@ -1403,6 +1403,7 @@ incident_router = APIRouter()
 class IncidentStatus(str, Enum):
     NEW = "new"
     DISPATCHED = "dispatched"
+    ON_SCENE = "on_scene"
     RESOLVED = "resolved"
 
 class Incident(BaseModel):
@@ -1604,13 +1605,22 @@ async def responder_status_update(incident_id: str, body: dict = Body(...)):
         incident.status = new_status
         if new_status == IncidentStatus.RESOLVED:
             incident.resolved_at = datetime.datetime.utcnow().isoformat() + 'Z'
+        
+        # Log the status change
+        log_incident_action("status_update", incident_id, body.get("user", "responder"), {
+            "unit_id": unit_id,
+            "from": old_status,
+            "to": new_status,
+            "action": f"Unit {unit_id} updated status to {new_status}"
+        })
     
     # Add notes to action log
     if notes:
         log_incident_action("responder_note", incident_id, body.get("user", "responder"), {
             "unit_id": unit_id,
             "notes": notes,
-            "status": new_status
+            "status": new_status or incident.status,
+            "action": f"Unit {unit_id} added note: {notes}"
         })
     
     incidents[incident_id] = incident

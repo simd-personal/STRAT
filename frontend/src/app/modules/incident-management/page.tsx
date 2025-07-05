@@ -12,7 +12,7 @@ interface Incident {
   type: string;
   priority: string;
   location: { lat: number; lng: number };
-  status: "new" | "dispatched" | "resolved";
+  status: "new" | "dispatched" | "on_scene" | "resolved";
   description: string;
   created_at: string;
   resolved_at?: string;
@@ -87,6 +87,8 @@ export default function IncidentManagement() {
 
   const [showEditModal, setShowEditModal] = useState(false);
   const [editIncident, setEditIncident] = useState<Incident | null>(null);
+  const [incidentActionLogs, setIncidentActionLogs] = useState<any[]>([]);
+  const [showIncidentActionLogs, setShowIncidentActionLogs] = useState(false);
 
   useEffect(() => {
     fetchIncidents();
@@ -144,6 +146,17 @@ export default function IncidentManagement() {
       setActionLogs(data.actions || []);
     } catch (error) {
       console.error("Failed to fetch action logs:", error);
+    }
+  };
+
+  const fetchIncidentActionLogs = async (incidentId: string) => {
+    try {
+      const response = await fetch(`${BACKEND_URL}/api/incidents/${incidentId}/actions`);
+      const data = await response.json();
+      setIncidentActionLogs(data.actions || []);
+      setShowIncidentActionLogs(true);
+    } catch (error) {
+      console.error("Failed to fetch incident action logs:", error);
     }
   };
 
@@ -302,6 +315,7 @@ export default function IncidentManagement() {
     switch (status) {
       case "new": return "text-blue-400 bg-blue-900/20";
       case "dispatched": return "text-yellow-400 bg-yellow-900/20";
+      case "on_scene": return "text-orange-400 bg-orange-900/20";
       case "resolved": return "text-green-400 bg-green-900/20";
       default: return "text-gray-400 bg-gray-900/20";
     }
@@ -452,6 +466,7 @@ export default function IncidentManagement() {
             <option value="">All Status</option>
             <option value="new">New</option>
             <option value="dispatched">Dispatched</option>
+            <option value="on_scene">On Scene</option>
             <option value="resolved">Resolved</option>
           </select>
           
@@ -828,6 +843,12 @@ export default function IncidentManagement() {
 
             {/* Action Buttons */}
             <div className="flex gap-3 mt-6 pt-4 border-t border-[#A3B18A]/20">
+              <button
+                onClick={() => fetchIncidentActionLogs(selectedIncident.incident_id)}
+                className="px-4 py-2 bg-purple-600 text-white rounded-lg font-semibold hover:bg-purple-700 transition-colors"
+              >
+                View History
+              </button>
               {selectedIncident.status !== "resolved" && (
                 <>
                   <button
@@ -944,6 +965,110 @@ export default function IncidentManagement() {
                         {log.action === 'dispatched' && (
                           <div className="text-[#F3F3E7]">
                             Dispatched unit {log.details.unit_id} to incident
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Incident Action Logs Modal */}
+      {showIncidentActionLogs && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-[#23272f] rounded-2xl border border-[#A3B18A] p-6 w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-xl font-bold text-[#F3F3E7]">Incident History</h2>
+              <button
+                onClick={() => setShowIncidentActionLogs(false)}
+                className="text-[#A3B18A] hover:text-[#F3F3E7] transition-colors"
+              >
+                ✕
+              </button>
+            </div>
+            
+            <div className="space-y-4">
+              {incidentActionLogs.length === 0 ? (
+                <p className="text-[#A3F3E7] text-center py-8">No history available for this incident</p>
+              ) : (
+                incidentActionLogs.map((log, index) => (
+                  <div key={index} className="bg-[#181A1B] p-4 rounded-lg border border-[#A3B18A]/20">
+                    <div className="flex justify-between items-start mb-2">
+                      <div className="flex items-center gap-2">
+                        <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
+                          log.action === 'created' ? 'bg-green-900/20 text-green-400' :
+                          log.action === 'updated' ? 'bg-blue-900/20 text-blue-400' :
+                          log.action === 'dispatched' ? 'bg-yellow-900/20 text-yellow-400' :
+                          log.action === 'status_update' ? 'bg-orange-900/20 text-orange-400' :
+                          log.action === 'responder_note' ? 'bg-purple-900/20 text-purple-400' :
+                          'bg-gray-900/20 text-gray-400'
+                        }`}>
+                          {log.action.replace('_', ' ').toUpperCase()}
+                        </span>
+                        <span className="text-[#F3F3E7] font-semibold">
+                          {log.details?.unit_id || log.user}
+                        </span>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-[#A3B18A] text-sm">
+                          {new Date(log.timestamp).toLocaleString()}
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {log.details && (
+                      <div className="mt-2 text-sm">
+                        {log.action === 'created' && (
+                          <div className="text-[#F3F3E7]">
+                            Created {log.details.type} incident with priority {log.details.priority}
+                            {log.details.description && `: "${log.details.description}"`}
+                          </div>
+                        )}
+                        {log.action === 'updated' && (
+                          <div className="text-[#F3F3E7]">
+                            {Object.entries(log.details).map(([field, change]: [string, any]) => (
+                              <div key={field} className="mb-1">
+                                <span className="text-[#A3B18A]">{field}:</span>{' '}
+                                <span className="text-red-400">{change.from}</span>{' '}
+                                <span className="text-[#A3B18A]">→</span>{' '}
+                                <span className="text-green-400">{change.to}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {log.action === 'dispatched' && (
+                          <div className="text-[#F3F3E7]">
+                            Dispatched unit {log.details.unit_id} to incident
+                          </div>
+                        )}
+                        {log.action === 'status_update' && (
+                          <div className="text-[#F3F3E7]">
+                            <span className="text-[#A3B18A]">Status changed:</span>{' '}
+                            <span className="text-red-400">{log.details.from}</span>{' '}
+                            <span className="text-[#A3B18A]">→</span>{' '}
+                            <span className="text-green-400">{log.details.to}</span>
+                            {log.details.action && (
+                              <div className="mt-1 text-[#A3B18A] italic">
+                                {log.details.action}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        {log.action === 'responder_note' && (
+                          <div className="text-[#F3F3E7]">
+                            <div className="text-[#A3B18A] mb-1">Note added:</div>
+                            <div className="bg-[#23272f] p-3 rounded-lg border border-[#A3B18A]/20 italic">
+                              "{log.details.notes}"
+                            </div>
+                            {log.details.action && (
+                              <div className="mt-2 text-[#A3B18A] text-xs">
+                                {log.details.action}
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
