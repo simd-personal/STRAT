@@ -4,6 +4,8 @@ import { useState, useEffect, useRef } from "react";
 import { notify } from "../../components/notify";
 import GoogleOpsMap from '../../components/GoogleOpsMap';
 import { GoogleMap, Marker, useJsApiLoader } from '@react-google-maps/api';
+import { useWebSocket } from "../../components/WebSocketProvider";
+import UnitStatusPanel from './UnitStatusPanel';
 
 interface Incident {
   incident_id: string;
@@ -40,6 +42,8 @@ const INITIAL_UNITS = [
 ];
 
 export default function IncidentManagement() {
+  const { isConnected, lastMessage } = useWebSocket();
+  
   // Restore backend state for incidents
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [loading, setLoading] = useState(true);
@@ -61,13 +65,10 @@ export default function IncidentManagement() {
     location: { lat: 39.8283, lng: -98.5795 },
     description: ""
   });
-  const [dispatchUnit, setDispatchUnit] = useState("");
+  const [dispatchUnits, setDispatchUnits] = useState<string[]>([]);
 
-  // Available units (mock data - replace with real asset data)
-  const availableUnits = [
-    "Alpha-1", "Alpha-2", "Bravo-1", "Bravo-2", 
-    "Charlie-1", "Delta-1", "Echo-1", "Foxtrot-1"
-  ];
+  // Available units from backend
+  const [availableUnits, setAvailableUnits] = useState<string[]>([]);
 
   const [modalIncidentLocation, setModalIncidentLocation] = useState({ lat: 33.6411, lng: -117.9187 });
 
@@ -90,15 +91,30 @@ export default function IncidentManagement() {
   useEffect(() => {
     fetchIncidents();
     fetchActionLogs();
-    
-    // Set up polling for real-time updates
-    const interval = setInterval(() => {
-      fetchIncidents();
-      fetchActionLogs();
-    }, 5000); // Poll every 5 seconds
-    
-    return () => clearInterval(interval);
+    fetchUnits();
   }, []);
+
+  // Handle real-time updates from WebSocket
+  useEffect(() => {
+    if (lastMessage && lastMessage.type === 'incident_update') {
+      fetchIncidents(); // Refresh incidents when we get an update
+      fetchActionLogs(); // Refresh action logs
+      
+      // Show notification for updates
+      if (lastMessage.action === 'created') {
+        notify.info('New incident created');
+      } else if (lastMessage.action === 'updated') {
+        notify.info('Incident updated');
+      } else if (lastMessage.action === 'dispatched') {
+        notify.info('Unit dispatched to incident');
+      } else if (lastMessage.action === 'responder_update') {
+        notify.info('Responder updated incident status');
+      }
+    } else if (lastMessage && lastMessage.type === 'unit_update') {
+      fetchUnits(); // Refresh units when we get an update
+      notify.info('Unit status updated');
+    }
+  }, [lastMessage]);
 
   // Check for new incidents and show notifications
   useEffect(() => {
@@ -108,6 +124,18 @@ export default function IncidentManagement() {
     }
     setLastIncidentCount(incidents.length);
   }, [incidents.length, lastIncidentCount]);
+
+  const fetchUnits = async () => {
+    try {
+      const response = await fetch(`${BACKEND_URL}/api/units`);
+      const data = await response.json();
+      const unitIds = (data.units || []).map((unit: any) => unit.id);
+      setAvailableUnits(unitIds);
+    } catch (error) {
+      console.error("Failed to fetch units:", error);
+      setAvailableUnits([]);
+    }
+  };
 
   const fetchActionLogs = async () => {
     try {
@@ -170,35 +198,26 @@ export default function IncidentManagement() {
   };
 
   const handleDispatchUnit = async () => {
-    if (!selectedIncident || !dispatchUnit) return;
-    
+    if (!selectedIncident || dispatchUnits.length === 0) return;
     try {
-      const response = await fetch(`${BACKEND_URL}/api/dispatch`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          incident_id: selectedIncident.incident_id,
-          unit_id: dispatchUnit,
-          user: "dispatcher" // Add user info for action logging
-        })
-      });
-      
-      if (response.ok) {
-        notify.success(`Unit ${dispatchUnit} dispatched to incident`);
-        setShowDispatchModal(false);
-        setSelectedIncident(null);
-        setDispatchUnit("");
-        fetchIncidents();
-        setUnits(prevUnits => prevUnits.map(u =>
-          u.name === dispatchUnit
-            ? { ...u, status: 'dispatched', destination: selectedIncident.location }
-            : u
-        ));
-      } else {
-        notify.error("Failed to dispatch unit");
+      for (const unitId of dispatchUnits) {
+        await fetch(`${BACKEND_URL}/api/dispatch`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            incident_id: selectedIncident.incident_id,
+            unit_id: unitId,
+            user: "dispatcher"
+          })
+        });
       }
+      notify.success(`Units ${dispatchUnits.join(', ')} dispatched to incident`);
+      setShowDispatchModal(false);
+      setSelectedIncident(null);
+      setDispatchUnits([]);
+      fetchIncidents();
     } catch (error) {
-      notify.error("Failed to dispatch unit");
+      notify.error("Failed to dispatch units");
     }
   };
 
@@ -386,6 +405,12 @@ export default function IncidentManagement() {
               <p className="text-[#A3B18A] text-sm">Real-time incident tracking and unit dispatch</p>
             </div>
           </div>
+          
+          {/* Connection Status */}
+          <div className={`px-4 py-2 rounded-lg text-sm font-semibold ${isConnected ? 'bg-green-600/20 text-green-400' : 'bg-red-600/20 text-red-400'}`}>
+            {isConnected ? '🟢 Connected (Real-time)' : '🔴 Disconnected'}
+          </div>
+          
           <button
             onClick={() => setShowCreateModal(true)}
             className="px-6 py-3 bg-[#A3B18A] text-[#181A1B] rounded-lg font-semibold hover:bg-[#8FA573] transition-colors duration-200"
@@ -412,6 +437,11 @@ export default function IncidentManagement() {
 
       {/* Main Content */}
       <div className="p-8">
+        {/* Unit Status Panel */}
+        <div className="mb-6">
+          <UnitStatusPanel />
+        </div>
+        
         {/* Filters */}
         <div className="mb-6 flex gap-4 items-center">
           <select
@@ -653,24 +683,25 @@ export default function IncidentManagement() {
       {showDispatchModal && selectedIncident && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-[#23272f] rounded-2xl border border-[#A3B18A] p-6 w-full max-w-md">
-            <h2 className="text-xl font-bold text-[#F3F3E7] mb-4">Dispatch Unit</h2>
+            <h2 className="text-xl font-bold text-[#F3F3E7] mb-4">Dispatch Units</h2>
             <p className="text-[#A3B18A] mb-4">
-              Assign a unit to incident: {selectedIncident.type}
+              Assign units to incident: {selectedIncident.type}
             </p>
             <select
-              value={dispatchUnit}
-              onChange={(e) => setDispatchUnit(e.target.value)}
+              multiple
+              value={dispatchUnits}
+              onChange={e => setDispatchUnits(Array.from(e.target.selectedOptions, option => option.value))}
               className="w-full px-4 py-2 bg-[#181A1B] border border-[#A3B18A] rounded-lg text-[#F3F3E7] mb-4"
+              size={Math.min(availableUnits.length, 6)}
             >
-              <option value="">Select Unit</option>
-              {units.map(unit => (
-                <option key={unit.id} value={unit.name}>{unit.name}</option>
+              {availableUnits.map(unitId => (
+                <option key={unitId} value={unitId}>{unitId}</option>
               ))}
             </select>
             <div className="flex gap-3">
               <button
                 onClick={handleDispatchUnit}
-                disabled={!dispatchUnit}
+                disabled={dispatchUnits.length === 0}
                 className="flex-1 px-4 py-2 bg-[#A3B18A] text-[#181A1B] rounded-lg font-semibold hover:bg-[#8FA573] transition-colors disabled:opacity-50"
               >
                 Dispatch
@@ -815,7 +846,7 @@ export default function IncidentManagement() {
                     }}
                     className="flex-1 px-4 py-2 bg-[#A3B18A] text-[#181A1B] rounded-lg font-semibold hover:bg-[#8FA573] transition-colors"
                   >
-                    Dispatch Unit
+                    Dispatch Units
                   </button>
                   <button
                     onClick={() => {

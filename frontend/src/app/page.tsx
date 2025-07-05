@@ -53,19 +53,19 @@ export default function LandingPage() {
             <span className="absolute inset-0 border border-[#F3F3E7] rounded-lg opacity-40 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none"></span>
           </Link>
         </div>
-        {/* Centered action buttons below Learn More */}
-        <div className="mt-6 flex justify-center gap-4 w-full">
-          <Link
-            href="/app"
-            className="px-5 py-2 border-2 border-[#F3F3E7] rounded-lg font-semibold text-[#F3F3E7] hover:bg-[#A3B18A] hover:text-[#181A1B] transition-colors duration-200 text-base tracking-wide"
-          >
-            Get Started
-          </Link>
+        {/* Role Selection */}
+        <div className="flex flex-col md:flex-row justify-center items-center gap-8 mt-12 mb-8">
           <Link
             href="/first-responder-portal"
-            className="px-5 py-2 border-2 border-[#F3F3E7] rounded-lg font-semibold text-[#F3F3E7] hover:bg-[#A3B18A] hover:text-[#181A1B] transition-colors duration-200 text-base tracking-wide"
+            className="px-7 py-3 bg-[#A3B18A] text-[#181A1B] rounded-lg font-bold text-base shadow-lg hover:bg-[#8FA573] transition-colors duration-200 text-center w-48"
           >
-            First Responder Portal
+            Dispatcher Portal
+          </Link>
+          <Link
+            href="/responder-portal"
+            className="px-7 py-3 bg-[#A3B18A] text-[#181A1B] rounded-lg font-bold text-base shadow-lg hover:bg-[#8FA573] transition-colors duration-200 text-center w-48"
+          >
+            Responder Portal
           </Link>
         </div>
       </main>
