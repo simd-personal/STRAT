@@ -1,4 +1,4 @@
-from fastapi import FastAPI, File, UploadFile, Form, Request, Body, APIRouter
+from fastapi import FastAPI, File, UploadFile, Form, Request, Body, APIRouter, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from typing import List, Dict, Any, Optional
@@ -21,6 +21,58 @@ from pydantic import BaseModel
 load_dotenv()
 
 app = FastAPI()
+
+# WebSocket connection manager for real-time updates
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: List[WebSocket] = []
+        self.dispatcher_connections: List[WebSocket] = []
+        self.responder_connections: List[WebSocket] = []
+
+    async def connect(self, websocket: WebSocket, user_type: str = "dispatcher"):
+        await websocket.accept()
+        self.active_connections.append(websocket)
+        if user_type == "dispatcher":
+            self.dispatcher_connections.append(websocket)
+        elif user_type == "responder":
+            self.responder_connections.append(websocket)
+
+    def disconnect(self, websocket: WebSocket, user_type: str = "dispatcher"):
+        if websocket in self.active_connections:
+            self.active_connections.remove(websocket)
+        if user_type == "dispatcher" and websocket in self.dispatcher_connections:
+            self.dispatcher_connections.remove(websocket)
+        elif user_type == "responder" and websocket in self.responder_connections:
+            self.responder_connections.remove(websocket)
+
+    async def send_personal_message(self, message: str, websocket: WebSocket):
+        await websocket.send_text(message)
+
+    async def broadcast_to_dispatchers(self, message: str):
+        for connection in self.dispatcher_connections:
+            try:
+                await connection.send_text(message)
+            except:
+                # Remove dead connections
+                self.dispatcher_connections.remove(connection)
+
+    async def broadcast_to_responders(self, message: str):
+        for connection in self.responder_connections:
+            try:
+                await connection.send_text(message)
+            except:
+                # Remove dead connections
+                self.responder_connections.remove(connection)
+
+    async def broadcast_to_all(self, message: str):
+        for connection in self.active_connections:
+            try:
+                await connection.send_text(message)
+            except:
+                # Remove dead connections
+                self.active_connections.remove(connection)
+
+manager = ConnectionManager()
 
 # Set OpenAI API key from environment variable
 openai_api_key = os.getenv("OPENAI_API_KEY", "your-api-key-here")
@@ -1351,6 +1403,7 @@ incident_router = APIRouter()
 class IncidentStatus(str, Enum):
     NEW = "new"
     DISPATCHED = "dispatched"
+    ON_SCENE = "on_scene"
     RESOLVED = "resolved"
 
 class Incident(BaseModel):
@@ -1369,6 +1422,16 @@ incidents = {}
 
 # Action log for incidents (track who did what)
 incident_action_logs = []
+
+# Unit status management
+units = {
+    "police-1": {"id": "police-1", "type": "police", "status": "available", "current_location": {"lat": 33.6415, "lng": -117.9235}, "eta": None},
+    "police-2": {"id": "police-2", "type": "police", "status": "available", "current_location": {"lat": 33.6420, "lng": -117.9240}, "eta": None},
+    "fire-1": {"id": "fire-1", "type": "fire", "status": "available", "current_location": {"lat": 33.6430, "lng": -117.9250}, "eta": None},
+    "fire-2": {"id": "fire-2", "type": "fire", "status": "available", "current_location": {"lat": 33.6440, "lng": -117.9260}, "eta": None},
+    "emt-1": {"id": "emt-1", "type": "emt", "status": "available", "current_location": {"lat": 33.6450, "lng": -117.9270}, "eta": None},
+    "emt-2": {"id": "emt-2", "type": "emt", "status": "available", "current_location": {"lat": 33.6460, "lng": -117.9280}, "eta": None},
+}
 
 def log_incident_action(action: str, incident_id: str, user: str = "dispatcher", details: dict = None):
     """Log actions performed on incidents"""
@@ -1404,6 +1467,9 @@ async def create_incident(body: dict = Body(...)):
         "priority": incident.priority,
         "description": incident.description
     })
+    
+    # Broadcast real-time update
+    await broadcast_incident_update(incident, "created", body.get("user", "dispatcher"))
     
     log_event("Incident", f"Incident created: {incident.type}", {"incident_id": incident_id})
     return {"status": "success", "incident": incident}
@@ -1441,6 +1507,9 @@ async def update_incident(incident_id: str, body: dict = Body(...)):
     if changes:
         log_incident_action("updated", incident_id, body.get("user", "dispatcher"), changes)
     
+    # Broadcast real-time update
+    await broadcast_incident_update(incident, "updated", body.get("user", "dispatcher"))
+    
     log_event("Incident", f"Incident updated: {incident_id}", {"status": incident.status})
     return {"status": "success", "incident": incident}
 
@@ -1476,11 +1545,135 @@ async def dispatch_unit(body: dict = Body(...)):
         "status": "dispatched"
     })
     
+    # Broadcast real-time update
+    await broadcast_incident_update(incident, "dispatched", body.get("user", "dispatcher"))
+    
     log_event("Dispatch", f"Unit {unit_id} dispatched to incident {incident_id}", {"incident_id": incident_id, "unit_id": unit_id})
     return {"status": "success", "incident": incident}
 
+# --- Unit Management Endpoints ---
+@incident_router.get("/api/units")
+async def get_units():
+    """Get all units with their current status"""
+    return {"units": list(units.values())}
+
+@incident_router.patch("/api/units/{unit_id}/status")
+async def update_unit_status(unit_id: str, body: dict = Body(...)):
+    """Update unit status (available, busy, off-duty)"""
+    if unit_id not in units:
+        return {"status": "error", "message": "Unit not found"}
+    
+    unit = units[unit_id]
+    old_status = unit["status"]
+    unit["status"] = body.get("status", unit["status"])
+    unit["current_location"] = body.get("current_location", unit["current_location"])
+    unit["eta"] = body.get("eta", unit["eta"])
+    
+    # Log the status change
+    log_incident_action("unit_status_changed", unit_id, body.get("user", "responder"), {
+        "from": old_status,
+        "to": unit["status"],
+        "location": unit["current_location"],
+        "eta": unit["eta"]
+    })
+    
+    # Broadcast unit status update
+    unit_update_message = {
+        "type": "unit_update",
+        "unit": unit,
+        "user": body.get("user", "responder"),
+        "timestamp": datetime.datetime.utcnow().isoformat() + 'Z'
+    }
+    await manager.broadcast_to_all(json.dumps(unit_update_message))
+    
+    return {"status": "success", "unit": unit}
+
+@incident_router.post("/api/incidents/{incident_id}/responder-update")
+async def responder_status_update(incident_id: str, body: dict = Body(...)):
+    """Allow responders to update incident status and add notes"""
+    incident = incidents.get(incident_id)
+    if not incident:
+        return {"status": "error", "message": "Incident not found"}
+    
+    unit_id = body.get("unit_id")
+    new_status = body.get("status")
+    notes = body.get("notes", "")
+    
+    # Update incident status
+    if new_status:
+        old_status = incident.status
+        incident.status = new_status
+        if new_status == IncidentStatus.RESOLVED:
+            incident.resolved_at = datetime.datetime.utcnow().isoformat() + 'Z'
+        
+        # Log the status change
+        log_incident_action("status_update", incident_id, body.get("user", "responder"), {
+            "unit_id": unit_id,
+            "from": old_status,
+            "to": new_status,
+            "action": f"Unit {unit_id} updated status to {new_status}"
+        })
+    
+    # Add notes to action log
+    if notes:
+        log_incident_action("responder_note", incident_id, body.get("user", "responder"), {
+            "unit_id": unit_id,
+            "notes": notes,
+            "status": new_status or incident.status,
+            "action": f"Unit {unit_id} added note: {notes}"
+        })
+    
+    incidents[incident_id] = incident
+    
+    # Broadcast real-time update
+    await broadcast_incident_update(incident, "responder_update", body.get("user", "responder"))
+    
+    return {"status": "success", "incident": incident}
+
+@incident_router.get("/api/units/{unit_id}")
+async def get_unit(unit_id: str):
+    unit = units.get(unit_id)
+    if not unit:
+        return {"status": "error", "message": "Unit not found"}
+    return {"unit": unit}
+
 # Register router
 app.include_router(incident_router)
+
+# --- WebSocket Endpoints for Real-time Updates ---
+@app.websocket("/ws/dispatcher")
+async def websocket_dispatcher(websocket: WebSocket):
+    await manager.connect(websocket, "dispatcher")
+    try:
+        while True:
+            # Keep connection alive and handle any incoming messages
+            data = await websocket.receive_text()
+            # Could handle dispatcher-specific commands here
+    except WebSocketDisconnect:
+        manager.disconnect(websocket, "dispatcher")
+
+@app.websocket("/ws/responder")
+async def websocket_responder(websocket: WebSocket):
+    await manager.connect(websocket, "responder")
+    try:
+        while True:
+            # Keep connection alive and handle any incoming messages
+            data = await websocket.receive_text()
+            # Could handle responder-specific commands here
+    except WebSocketDisconnect:
+        manager.disconnect(websocket, "responder")
+
+# Update incident functions to broadcast real-time updates
+async def broadcast_incident_update(incident: Incident, action: str, user: str = "dispatcher"):
+    """Broadcast incident updates to all connected clients"""
+    update_message = {
+        "type": "incident_update",
+        "action": action,
+        "incident": incident.dict(),
+        "user": user,
+        "timestamp": datetime.datetime.utcnow().isoformat() + 'Z'
+    }
+    await manager.broadcast_to_all(json.dumps(update_message))
 
 @app.get("/api/assets")
 async def get_assets():
