@@ -76,6 +76,10 @@ simulation_state = {
     "user_injections": []  # User-requested events
 }
 
+# Global simulation task
+simulation_task = None
+fast_simulation_speed = 4  # seconds per step (default for fast mode)
+
 # In-memory log store (replace with DB for production)
 mission_logs = []
 
