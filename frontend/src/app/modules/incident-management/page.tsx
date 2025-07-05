@@ -79,9 +79,45 @@ export default function IncidentManagement() {
 
   const [units, setUnits] = useState<Unit[]>(INITIAL_UNITS);
 
+  // Real-time updates and notifications
+  const [lastIncidentCount, setLastIncidentCount] = useState(0);
+  const [actionLogs, setActionLogs] = useState<any[]>([]);
+  const [showActionLogs, setShowActionLogs] = useState(false);
+
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editIncident, setEditIncident] = useState<Incident | null>(null);
+
   useEffect(() => {
     fetchIncidents();
+    fetchActionLogs();
+    
+    // Set up polling for real-time updates
+    const interval = setInterval(() => {
+      fetchIncidents();
+      fetchActionLogs();
+    }, 5000); // Poll every 5 seconds
+    
+    return () => clearInterval(interval);
   }, []);
+
+  // Check for new incidents and show notifications
+  useEffect(() => {
+    if (incidents.length > lastIncidentCount && lastIncidentCount > 0) {
+      const newIncidents = incidents.length - lastIncidentCount;
+      notify.info(`${newIncidents} new incident${newIncidents > 1 ? 's' : ''} received`);
+    }
+    setLastIncidentCount(incidents.length);
+  }, [incidents.length, lastIncidentCount]);
+
+  const fetchActionLogs = async () => {
+    try {
+      const response = await fetch(`${BACKEND_URL}/api/incidents/actions?limit=20`);
+      const data = await response.json();
+      setActionLogs(data.actions || []);
+    } catch (error) {
+      console.error("Failed to fetch action logs:", error);
+    }
+  };
 
   const fetchIncidents = async () => {
     setLoading(true);
@@ -101,7 +137,10 @@ export default function IncidentManagement() {
       const response = await fetch(`${BACKEND_URL}/api/incidents`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newIncident)
+        body: JSON.stringify({
+          ...newIncident,
+          user: "dispatcher" // Add user info for action logging
+        })
       });
       
       if (response.ok) {
@@ -139,7 +178,8 @@ export default function IncidentManagement() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           incident_id: selectedIncident.incident_id,
-          unit_id: dispatchUnit
+          unit_id: dispatchUnit,
+          user: "dispatcher" // Add user info for action logging
         })
       });
       
@@ -182,7 +222,10 @@ export default function IncidentManagement() {
       const response = await fetch(`${BACKEND_URL}/api/incidents/${incidentId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: "resolved" })
+        body: JSON.stringify({ 
+          status: "resolved",
+          user: "dispatcher" // Add user info for action logging
+        })
       });
       
       if (response.ok) {
@@ -291,6 +334,39 @@ export default function IncidentManagement() {
     }
   }, [showCreateModal]);
 
+  // Edit Incident handler
+  const handleEditIncident = (incident: Incident) => {
+    setEditIncident({ ...incident });
+    setShowEditModal(true);
+  };
+
+  const saveEditIncident = async () => {
+    if (!editIncident) return;
+    try {
+      const response = await fetch(`${BACKEND_URL}/api/incidents/${editIncident.incident_id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: editIncident.type,
+          priority: editIncident.priority,
+          description: editIncident.description,
+          location: editIncident.location,
+          user: 'dispatcher',
+        })
+      });
+      if (response.ok) {
+        notify.success('Incident updated');
+        setShowEditModal(false);
+        setEditIncident(null);
+        fetchIncidents();
+      } else {
+        notify.error('Failed to update incident');
+      }
+    } catch (error) {
+      notify.error('Failed to update incident');
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#181A1B] text-[#F3F3E7] font-sans">
       {/* Header */}
@@ -337,7 +413,7 @@ export default function IncidentManagement() {
       {/* Main Content */}
       <div className="p-8">
         {/* Filters */}
-        <div className="mb-6 flex gap-4">
+        <div className="mb-6 flex gap-4 items-center">
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
@@ -360,6 +436,13 @@ export default function IncidentManagement() {
             <option value="3">Priority 3</option>
             <option value="4">Priority 4 (Lowest)</option>
           </select>
+
+          <button
+            onClick={() => setShowActionLogs(true)}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition-colors"
+          >
+            Action Logs ({actionLogs.length})
+          </button>
         </div>
 
         {/* Incidents Table */}
@@ -439,6 +522,15 @@ export default function IncidentManagement() {
                                 className="px-3 py-1 bg-green-600 text-white rounded text-xs font-semibold hover:bg-green-700 transition-colors"
                               >
                                 Resolve
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleEditIncident(incident);
+                                }}
+                                className="px-3 py-1 bg-blue-600 text-white rounded text-xs font-semibold hover:bg-blue-700 transition-colors"
+                              >
+                                Edit
                               </button>
                             </>
                           )}
@@ -710,6 +802,15 @@ export default function IncidentManagement() {
                   <button
                     onClick={() => {
                       setShowIncidentDetailsModal(false);
+                      handleEditIncident(selectedIncident);
+                    }}
+                    className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition-colors"
+                  >
+                    Edit Incident
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowIncidentDetailsModal(false);
                       setShowDispatchModal(true);
                     }}
                     className="flex-1 px-4 py-2 bg-[#A3B18A] text-[#181A1B] rounded-lg font-semibold hover:bg-[#8FA573] transition-colors"
@@ -742,6 +843,162 @@ export default function IncidentManagement() {
       {lastCreatedIncidentId && (
         <div className="mt-2 text-center">
           <button onClick={handleUndoCreate} className="underline text-red-400">Undo Last Incident Creation</button>
+        </div>
+      )}
+
+      {/* Action Logs Modal */}
+      {showActionLogs && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-[#23272f] rounded-2xl border border-[#A3B18A] p-6 w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-xl font-bold text-[#F3F3E7]">Action Logs</h2>
+              <button
+                onClick={() => setShowActionLogs(false)}
+                className="text-[#A3B18A] hover:text-[#F3F3E7] transition-colors"
+              >
+                ✕
+              </button>
+            </div>
+            
+            <div className="space-y-4">
+              {actionLogs.length === 0 ? (
+                <p className="text-[#A3B18A] text-center py-8">No actions logged yet</p>
+              ) : (
+                actionLogs.map((log, index) => (
+                  <div key={index} className="bg-[#181A1B] p-4 rounded-lg border border-[#A3B18A]/20">
+                    <div className="flex justify-between items-start mb-2">
+                      <div className="flex items-center gap-2">
+                        <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
+                          log.action === 'created' ? 'bg-green-900/20 text-green-400' :
+                          log.action === 'updated' ? 'bg-blue-900/20 text-blue-400' :
+                          log.action === 'dispatched' ? 'bg-yellow-900/20 text-yellow-400' :
+                          'bg-gray-900/20 text-gray-400'
+                        }`}>
+                          {log.action.toUpperCase()}
+                        </span>
+                        <span className="text-[#F3F3E7] font-semibold">
+                          Incident {log.incident_id.slice(0, 8)}...
+                        </span>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-[#A3B18A] text-sm">
+                          {new Date(log.timestamp).toLocaleString()}
+                        </div>
+                        <div className="text-[#A3B18A] text-xs">
+                          by {log.user}
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {log.details && Object.keys(log.details).length > 0 && (
+                      <div className="mt-2 text-sm">
+                        {log.action === 'created' && (
+                          <div className="text-[#F3F3E7]">
+                            Created {log.details.type} incident with priority {log.details.priority}
+                            {log.details.description && `: "${log.details.description}"`}
+                          </div>
+                        )}
+                        {log.action === 'updated' && (
+                          <div className="text-[#F3F3E7]">
+                            {Object.entries(log.details).map(([field, change]: [string, any]) => (
+                              <div key={field} className="mb-1">
+                                <span className="text-[#A3B18A]">{field}:</span>{' '}
+                                <span className="text-red-400">{change.from}</span>{' '}
+                                <span className="text-[#A3B18A]">→</span>{' '}
+                                <span className="text-green-400">{change.to}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {log.action === 'dispatched' && (
+                          <div className="text-[#F3F3E7]">
+                            Dispatched unit {log.details.unit_id} to incident
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Incident Modal */}
+      {showEditModal && editIncident && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-[#23272f] rounded-2xl border border-[#A3B18A] p-6 w-full max-w-md">
+            <h2 className="text-xl font-bold text-[#F3F3E7] mb-4">Edit Incident</h2>
+            <div className="space-y-4">
+              <input
+                type="text"
+                placeholder="Incident Type"
+                value={editIncident.type}
+                onChange={e => setEditIncident({ ...editIncident, type: e.target.value })}
+                className="w-full px-4 py-2 bg-[#181A1B] border border-[#A3B18A] rounded-lg text-[#F3F3E7]"
+              />
+              <select
+                value={editIncident.priority}
+                onChange={e => setEditIncident({ ...editIncident, priority: e.target.value })}
+                className="w-full px-4 py-2 bg-[#181A1B] border border-[#A3B18A] rounded-lg text-[#F3F3E7]"
+              >
+                <option value="1">Priority 1 (Critical)</option>
+                <option value="2">Priority 2 (High)</option>
+                <option value="3">Priority 3 (Moderate)</option>
+                <option value="4">Priority 4 (Minor)</option>
+              </select>
+              <textarea
+                placeholder="Description"
+                value={editIncident.description}
+                onChange={e => setEditIncident({ ...editIncident, description: e.target.value })}
+                className="w-full px-4 py-2 bg-[#181A1B] border border-[#A3B18A] rounded-lg text-[#F3F3E7] h-24"
+              />
+              <div>
+                <div className="mb-2 text-xs text-[#A3B18A]">Edit location:</div>
+                <div style={{ width: '100%', height: '180px', borderRadius: '8px', overflow: 'hidden' }}>
+                  <GoogleMap
+                    mapContainerStyle={{ width: '100%', height: '180px' }}
+                    center={editIncident.location}
+                    zoom={15}
+                    onClick={e => {
+                      if (e.latLng) {
+                        const lat = e.latLng.lat();
+                        const lng = e.latLng.lng();
+                        setEditIncident({ ...editIncident, location: { lat, lng } });
+                      }
+                    }}
+                  >
+                    <Marker
+                      position={editIncident.location}
+                      draggable={true}
+                      onDragEnd={e => {
+                        if (e.latLng) {
+                          const lat = e.latLng.lat();
+                          const lng = e.latLng.lng();
+                          setEditIncident({ ...editIncident, location: { lat, lng } });
+                        }
+                      }}
+                    />
+                  </GoogleMap>
+                </div>
+              </div>
+            </div>
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={saveEditIncident}
+                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition-colors"
+              >
+                Save
+              </button>
+              <button
+                onClick={() => setShowEditModal(false)}
+                className="flex-1 px-4 py-2 bg-[#181A1B] text-[#F3F3E7] rounded-lg font-semibold hover:bg-[#2A2F3A] transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
