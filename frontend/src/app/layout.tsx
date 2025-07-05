@@ -32,7 +32,7 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-black text-gray-100 font-mono`}
       >
-        <Toaster position="bottom-right" toastOptions={{ duration: 4000 }} />
+        <Toaster position="bottom-left" toastOptions={{ duration: 4000 }} />
         {children}
       </body>
     </html>
