@@ -1367,6 +1367,19 @@ class Incident(BaseModel):
 # In-memory incident store (replace with DB for production)
 incidents = {}
 
+# Action log for incidents (track who did what)
+incident_action_logs = []
+
+def log_incident_action(action: str, incident_id: str, user: str = "dispatcher", details: dict = None):
+    """Log actions performed on incidents"""
+    incident_action_logs.append({
+        "timestamp": datetime.datetime.utcnow().isoformat() + 'Z',
+        "action": action,
+        "incident_id": incident_id,
+        "user": user,
+        "details": details or {}
+    })
+
 # --- Incident Endpoints ---
 @incident_router.post("/api/incidents")
 async def create_incident(body: dict = Body(...)):
@@ -1384,6 +1397,14 @@ async def create_incident(body: dict = Body(...)):
         assigned_units=[]
     )
     incidents[incident_id] = incident
+    
+    # Log the action
+    log_incident_action("created", incident_id, body.get("user", "dispatcher"), {
+        "type": incident.type,
+        "priority": incident.priority,
+        "description": incident.description
+    })
+    
     log_event("Incident", f"Incident created: {incident.type}", {"incident_id": incident_id})
     return {"status": "success", "incident": incident}
 
@@ -1402,15 +1423,39 @@ async def update_incident(incident_id: str, body: dict = Body(...)):
     incident = incidents.get(incident_id)
     if not incident:
         return {"status": "error", "message": "Incident not found"}
-    # Update fields
+    
+    # Track what changed
+    changes = {}
     for field in ["type", "priority", "location", "status", "description", "assigned_units"]:
-        if field in body:
+        if field in body and getattr(incident, field) != body[field]:
+            changes[field] = {"from": getattr(incident, field), "to": body[field]}
             setattr(incident, field, body[field])
+    
     if body.get("status") == IncidentStatus.RESOLVED:
         incident.resolved_at = datetime.datetime.utcnow().isoformat() + 'Z'
+        changes["resolved_at"] = incident.resolved_at
+    
     incidents[incident_id] = incident
+    
+    # Log the action with changes
+    if changes:
+        log_incident_action("updated", incident_id, body.get("user", "dispatcher"), changes)
+    
     log_event("Incident", f"Incident updated: {incident_id}", {"status": incident.status})
     return {"status": "success", "incident": incident}
+
+# --- Action Log Endpoint ---
+@incident_router.get("/api/incidents/{incident_id}/actions")
+async def get_incident_actions(incident_id: str):
+    """Get action log for a specific incident"""
+    incident_actions = [log for log in incident_action_logs if log["incident_id"] == incident_id]
+    return {"actions": incident_actions}
+
+@incident_router.get("/api/incidents/actions")
+async def get_all_incident_actions(limit: int = 50):
+    """Get recent action logs for all incidents"""
+    recent_actions = sorted(incident_action_logs, key=lambda x: x["timestamp"], reverse=True)[:limit]
+    return {"actions": recent_actions}
 
 # --- Dispatch Endpoint ---
 @incident_router.post("/api/dispatch")
@@ -1424,6 +1469,13 @@ async def dispatch_unit(body: dict = Body(...)):
         incident.assigned_units.append(unit_id)
     incident.status = IncidentStatus.DISPATCHED
     incidents[incident_id] = incident
+    
+    # Log the dispatch action
+    log_incident_action("dispatched", incident_id, body.get("user", "dispatcher"), {
+        "unit_id": unit_id,
+        "status": "dispatched"
+    })
+    
     log_event("Dispatch", f"Unit {unit_id} dispatched to incident {incident_id}", {"incident_id": incident_id, "unit_id": unit_id})
     return {"status": "success", "incident": incident}
 
