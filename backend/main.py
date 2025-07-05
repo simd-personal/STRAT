@@ -1653,6 +1653,33 @@ async def get_unit(unit_id: str):
         return {"status": "error", "message": "Unit not found"}
     return {"unit": unit}
 
+@incident_router.get("/api/activity-feed")
+async def get_activity_feed(limit: int = 20):
+    """Get recent activity across all incidents and units"""
+    try:
+        # Get all incident actions
+        all_actions = []
+        for incident_id, incident in incidents.items():
+            if hasattr(incident, 'action_logs'):
+                for log in incident.action_logs:
+                    all_actions.append({
+                        "id": f"{incident_id}_{log.get('timestamp', '')}",
+                        "timestamp": log.get('timestamp', ''),
+                        "action": log.get('action', ''),
+                        "user": log.get('user', ''),
+                        "details": log.get('details', {}),
+                        "incident_id": incident_id
+                    })
+        
+        # Sort by timestamp (newest first) and limit
+        all_actions.sort(key=lambda x: x['timestamp'], reverse=True)
+        recent_activities = all_actions[:limit]
+        
+        return {"activities": recent_activities}
+    except Exception as e:
+        log_event("Error", f"Failed to get activity feed: {str(e)}", {})
+        return {"activities": []}
+
 # Register router
 app.include_router(incident_router)
 
