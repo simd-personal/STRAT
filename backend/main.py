@@ -1423,14 +1423,68 @@ incidents = {}
 # Action log for incidents (track who did what)
 incident_action_logs = []
 
-# Unit status management
+# Unit status management with more realistic positions
 units = {
-    "police-1": {"id": "police-1", "type": "police", "status": "available", "current_location": {"lat": 33.6415, "lng": -117.9235}, "eta": None},
-    "police-2": {"id": "police-2", "type": "police", "status": "available", "current_location": {"lat": 33.6420, "lng": -117.9240}, "eta": None},
-    "fire-1": {"id": "fire-1", "type": "fire", "status": "available", "current_location": {"lat": 33.6430, "lng": -117.9250}, "eta": None},
-    "fire-2": {"id": "fire-2", "type": "fire", "status": "available", "current_location": {"lat": 33.6440, "lng": -117.9260}, "eta": None},
-    "emt-1": {"id": "emt-1", "type": "emt", "status": "available", "current_location": {"lat": 33.6450, "lng": -117.9270}, "eta": None},
-    "emt-2": {"id": "emt-2", "type": "emt", "status": "available", "current_location": {"lat": 33.6460, "lng": -117.9280}, "eta": None},
+    "police-1": {
+        "id": "police-1", 
+        "type": "police", 
+        "status": "available", 
+        "current_location": {"lat": 33.6415, "lng": -117.9235}, 
+        "position": {"lat": 33.6415, "lng": -117.9235},  # Add position field for map compatibility
+        "name": "Police Unit 1",
+        "eta": None,
+        "last_update": datetime.datetime.utcnow().isoformat() + 'Z'
+    },
+    "police-2": {
+        "id": "police-2", 
+        "type": "police", 
+        "status": "available", 
+        "current_location": {"lat": 33.6420, "lng": -117.9240}, 
+        "position": {"lat": 33.6420, "lng": -117.9240},
+        "name": "Police Unit 2", 
+        "eta": None,
+        "last_update": datetime.datetime.utcnow().isoformat() + 'Z'
+    },
+    "fire-1": {
+        "id": "fire-1", 
+        "type": "fire", 
+        "status": "available", 
+        "current_location": {"lat": 33.6430, "lng": -117.9250}, 
+        "position": {"lat": 33.6430, "lng": -117.9250},
+        "name": "Fire Engine 1",
+        "eta": None,
+        "last_update": datetime.datetime.utcnow().isoformat() + 'Z'
+    },
+    "fire-2": {
+        "id": "fire-2", 
+        "type": "fire", 
+        "status": "available", 
+        "current_location": {"lat": 33.6440, "lng": -117.9260}, 
+        "position": {"lat": 33.6440, "lng": -117.9260},
+        "name": "Fire Engine 2",
+        "eta": None,
+        "last_update": datetime.datetime.utcnow().isoformat() + 'Z'
+    },
+    "emt-1": {
+        "id": "emt-1", 
+        "type": "emt", 
+        "status": "available", 
+        "current_location": {"lat": 33.6450, "lng": -117.9270}, 
+        "position": {"lat": 33.6450, "lng": -117.9270},
+        "name": "EMT Unit 1",
+        "eta": None,
+        "last_update": datetime.datetime.utcnow().isoformat() + 'Z'
+    },
+    "emt-2": {
+        "id": "emt-2", 
+        "type": "emt", 
+        "status": "available", 
+        "current_location": {"lat": 33.6460, "lng": -117.9280}, 
+        "position": {"lat": 33.6460, "lng": -117.9280},
+        "name": "EMT Unit 2",
+        "eta": None,
+        "last_update": datetime.datetime.utcnow().isoformat() + 'Z'
+    },
 }
 
 def log_incident_action(action: str, incident_id: str, user: str = "dispatcher", details: dict = None):
@@ -1552,6 +1606,7 @@ async def dispatch_unit(body: dict = Body(...)):
     if unit_id in units:
         units[unit_id]["status"] = "dispatched"
         units[unit_id]["destination"] = incident.location
+        units[unit_id]["position"] = units[unit_id]["current_location"]  # Keep current position for map
         units[unit_id]["last_update"] = datetime.datetime.utcnow().isoformat() + 'Z'
     
     # Log the dispatch action

@@ -140,19 +140,36 @@ export default function GoogleOpsMap({
             )}
           </React.Fragment>
         ))}
-        {/* Draw unit markers */}
-        {units.map((unit, idx) => (
-          <Marker
-            key={unit.id || unit.asset_id || idx}
-            position={unit.position}
-            label={{
-              text: `${idx + 1}`,
-              color: 'white',
-              fontWeight: 'bold',
-              fontSize: '14px',
-            }}
-          />
-        ))}
+        {/* Draw unit markers with proper icons */}
+        {units.map((unit, idx) => {
+          // Get appropriate icon based on unit type
+          let iconUrl = '/police-car-icon.svg'; // default
+          if (unit.type === 'fire') {
+            iconUrl = '/fire-truck-icon.svg';
+          } else if (unit.type === 'emt') {
+            iconUrl = '/ambulance-icon.svg';
+          }
+          
+          return (
+            <Marker
+              key={unit.id || unit.asset_id || idx}
+              position={unit.position || unit.current_location}
+              icon={{
+                url: iconUrl,
+                scaledSize: typeof window !== 'undefined' && window.google ? new window.google.maps.Size(32, 32) : undefined,
+                anchor: typeof window !== 'undefined' && window.google ? new window.google.maps.Point(16, 16) : undefined,
+              }}
+              title={unit.name || unit.id}
+              label={{
+                text: unit.name || unit.id,
+                color: 'white',
+                fontWeight: 'bold',
+                fontSize: '10px',
+                className: 'unit-label'
+              }}
+            />
+          );
+        })}
         {/* Draw incident markers */}
         {incidents.map((incident) => (
           <Marker

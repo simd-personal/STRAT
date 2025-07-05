@@ -131,8 +131,22 @@ export default function IncidentManagement() {
     try {
       const response = await fetch(`${BACKEND_URL}/api/units`);
       const data = await response.json();
-      const unitIds = (data.units || []).map((unit: any) => unit.id);
+      const backendUnits = data.units || [];
+      
+      // Set available units for dispatch dropdown
+      const unitIds = backendUnits.map((unit: any) => unit.id);
       setAvailableUnits(unitIds);
+      
+      // Transform backend units to map format
+      const mapUnits = backendUnits.map((unit: any) => ({
+        id: unit.id,
+        position: unit.position || unit.current_location,
+        status: unit.status,
+        name: unit.name || unit.id,
+        type: unit.type,
+        destination: unit.destination
+      }));
+      setUnits(mapUnits);
     } catch (error) {
       console.error("Failed to fetch units:", error);
       setAvailableUnits([]);

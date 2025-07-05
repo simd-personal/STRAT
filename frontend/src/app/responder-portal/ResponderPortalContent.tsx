@@ -34,8 +34,29 @@ interface ActivityLog {
 }
 
 // Custom marker components for GoogleMapReact
-interface MarkerProps { lat: number; lng: number; }
-const UnitMarker = (props: MarkerProps) => <span role="img" aria-label="unit" style={{ fontSize: 32 }}>🚓</span>;
+interface MarkerProps { 
+  lat: number; 
+  lng: number; 
+  unitType?: string;
+  unitName?: string;
+}
+
+const UnitMarker = ({ unitType = 'police', unitName }: MarkerProps) => {
+  let icon = '🚓'; // default police
+  if (unitType === 'fire') icon = '🚒';
+  else if (unitType === 'emt') icon = '🚑';
+  
+  return (
+    <div style={{ 
+      fontSize: 32, 
+      position: 'relative',
+      cursor: 'pointer'
+    }} title={unitName}>
+      {icon}
+    </div>
+  );
+};
+
 const IncidentMarker = (props: MarkerProps) => <span role="img" aria-label="incident" style={{ fontSize: 32 }}>📍</span>;
 
 // Add a helper hook to fetch directions for each incident
@@ -80,11 +101,13 @@ export default function ResponderPortalContent() {
   const [incidentActionLogs, setIncidentActionLogs] = useState<ActivityLog[]>([]);
   const [activityFeed, setActivityFeed] = useState<ActivityLog[]>([]);
   const [showActivityFeed, setShowActivityFeed] = useState(true);
+  const [allUnits, setAllUnits] = useState<any[]>([]);
   const mapRef = useRef<any>(null);
 
   useEffect(() => {
     fetchIncidents();
     fetchActivityFeed();
+    fetchAllUnits();
   }, [unit]);
 
   // Fetch unit location when en route to an incident
@@ -108,6 +131,7 @@ export default function ResponderPortalContent() {
       fetchIncidents(); // Refresh incidents when we get an update
       fetchUnitLocation(); // Also refresh unit location for real-time route update
       fetchActivityFeed(); // Refresh activity feed
+      fetchAllUnits(); // Refresh all units
     }
   }, [lastMessage]);
 
@@ -135,6 +159,17 @@ export default function ResponderPortalContent() {
     } catch (error) {
       console.error('Failed to fetch activity feed:', error);
       setActivityFeed([]);
+    }
+  };
+
+  const fetchAllUnits = async () => {
+    try {
+      const response = await fetch(`${BACKEND_URL}/api/units`);
+      const data = await response.json();
+      setAllUnits(data.units || []);
+    } catch (error) {
+      console.error('Failed to fetch units:', error);
+      setAllUnits([]);
     }
   };
 
@@ -406,8 +441,19 @@ export default function ResponderPortalContent() {
                                   }
                                 }}
                               >
-                                {unitLocation && <UnitMarker lat={unitLocation.lat} lng={unitLocation.lng} />}
+                                {unitLocation && <UnitMarker lat={unitLocation.lat} lng={unitLocation.lng} unitType="police" unitName={unit} />}
                                 <IncidentMarker lat={incident.location.lat} lng={incident.location.lng} />
+                                
+                                {/* Show all other units on the map */}
+                                {allUnits.filter(u => u.id !== unit).map((otherUnit) => (
+                                  <UnitMarker 
+                                    key={otherUnit.id}
+                                    lat={otherUnit.position?.lat || otherUnit.current_location?.lat} 
+                                    lng={otherUnit.position?.lng || otherUnit.current_location?.lng}
+                                    unitType={otherUnit.type}
+                                    unitName={otherUnit.name || otherUnit.id}
+                                  />
+                                ))}
                               </GoogleMapReact>
                             </div>
                           </div>
